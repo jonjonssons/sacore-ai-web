@@ -221,7 +221,6 @@ const AppHeader: React.FC<{ userData: any; isCollapsed: boolean; toggleSidebar: 
             {[
               { icon: User, label: 'Profile', onClick: () => navigate('/profile') },
               { icon: KeyRound, label: 'Change Password', onClick: () => setShowChangePasswordDialog(true) },
-              { icon: Settings, label: 'Settings' },
               {
                 icon: CircleHelp,
                 label: 'Support',
