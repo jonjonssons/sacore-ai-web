@@ -391,7 +391,7 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ onSearch }) => {
 
                     {/* Credit cost tooltip */}
                     <div className={`absolute -top-10 left-1/2 transform -translate-x-1/2 px-2 py-1 text-xs rounded shadow-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity ${isDarkMode ? 'bg-gray-700 text-white' : 'bg-gray-900 text-white'}`}>
-                      20 Credits
+                      50 Credits
                     </div>
                   </div>
                 </div>
