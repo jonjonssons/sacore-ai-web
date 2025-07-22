@@ -3110,15 +3110,15 @@ export function LeadTable({
               {/* <Upload className="absolute left-2 top-2 h-2.5 w-2.5 text-gray-400 cursor-pointer" /> */}
 
               {/* Websearch text in center (small) */}
-              <span className={`absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs pointer-events-none ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+              {/* <span className={`absolute left-1/2 top-1/2 transform -translate-x-1/2 -translate-y-1/2 text-xs pointer-events-none ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
                 Search for Profiles...
-              </span>
+              </span> */}
 
               {/* Search icon in lower left (small) */}
               <Search className="absolute left-2 bottom-2 h-3.5 w-3.5 text-gray-400" />
 
               <Input
-                placeholder=""
+                placeholder="Search for Profiles..."
                 value={searchInput}
                 onChange={handleSearchChange}
                 className={`pl-7 pr-3 py-1 h-8 text-xs rounded-md ${isDarkMode ? 'bg-gray-800 border-gray-600 text-white' : 'border-gray-300'}`}
