@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Upload, FileText, Type, X, Download, ArrowLeft, ExternalLink, Mail, Eye, ChevronUp, ChevronDown } from 'lucide-react';
+import { Upload, FileText, Type, X, Download, ArrowLeft, ExternalLink, Mail, Eye, ChevronUp, ChevronDown, Copy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -61,6 +61,7 @@ const EnrichPage: React.FC = () => {
   const [loadingEmails, setLoadingEmails] = useState<string[]>([]);
   const [loadingLinkedInUrls, setLoadingLinkedInUrls] = useState<string[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [expandedEmails, setExpandedEmails] = useState<Set<string>>(new Set());
 
   // States for deep analysis
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -867,6 +868,111 @@ const EnrichPage: React.FC = () => {
 
   };
 
+  // Function to toggle email expansion
+  const toggleEmailExpansion = (leadId: string) => {
+    setExpandedEmails(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(leadId)) {
+        newSet.delete(leadId);
+      } else {
+        newSet.add(leadId);
+      }
+      return newSet;
+    });
+  };
+
+  // Component to render emails with "See more..." functionality
+  const renderEmailDisplay = (lead: Lead) => {
+    if (!lead.email) return null;
+
+    const emails = lead.email.split(',').map(email => email.trim()).filter(email => email);
+    const isExpanded = expandedEmails.has(lead.id);
+
+    const handleCopyEmail = (email: string) => {
+      navigator.clipboard.writeText(email).then(() => {
+        toast({
+          title: "Email copied",
+          description: "Email address copied to clipboard",
+        });
+      }).catch(err => {
+        console.error('Could not copy text: ', err);
+      });
+    };
+
+    if (emails.length <= 1) {
+      // Single email or no email
+      return (
+        <div className="flex items-center gap-2">
+          <Mail className="h-3 w-3 text-green-500" />
+          <span className={`text-sm truncate ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+            {lead.email}
+          </span>
+          <button
+            onClick={() => handleCopyEmail(lead.email)}
+            className="ml-auto text-gray-400 hover:text-gray-600"
+            title="Copy email"
+          >
+            <Copy className="h-3 w-3" />
+          </button>
+        </div>
+      );
+    }
+
+    if (isExpanded) {
+      // Show all emails
+      return (
+        <div className="flex flex-col gap-1">
+          {emails.map((email, index) => (
+            <div key={index} className="flex items-center gap-2">
+              <Mail className="h-3 w-3 text-green-500" />
+              <span className={`text-sm truncate ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+                {email}
+              </span>
+              <button
+                onClick={() => handleCopyEmail(email)}
+                className="ml-auto text-gray-400 hover:text-gray-600"
+                title="Copy email"
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            </div>
+          ))}
+          <button
+            onClick={() => toggleEmailExpansion(lead.id)}
+            className={`text-xs underline ${isDarkMode ? "text-blue-400" : "text-blue-600"} hover:no-underline mt-1`}
+          >
+            See less
+          </button>
+        </div>
+      );
+    } else {
+      // Show first email with "See more..."
+      return (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Mail className="h-3 w-3 text-green-500" />
+            <span className={`text-sm truncate ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
+              {emails[0]}
+            </span>
+            <button
+              onClick={() => handleCopyEmail(emails[0])}
+              className="ml-auto text-gray-400 hover:text-gray-600"
+              title="Copy email"
+            >
+              <Copy className="h-3 w-3" />
+            </button>
+          </div>
+          <button
+            onClick={() => toggleEmailExpansion(lead.id)}
+            className={`text-xs underline ${isDarkMode ? "text-blue-400" : "text-blue-600"} hover:no-underline`}
+          >
+            See more... (+{emails.length - 1})
+          </button>
+        </div>
+      );
+    }
+  };
+
 
   return (
     <div className={`min-h-screen ${isDarkMode ? 'bg-primary' : 'bg-white'} py-4 px-4`}>
@@ -1091,7 +1197,7 @@ const EnrichPage: React.FC = () => {
                           >
                             Location {renderSortIcon('location')}
                           </TableHead>
-                          <TableHead className={`py-2 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[120px]`}>Deep Analysis</TableHead>
+                          <TableHead className={`py-2 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[160px]`}>Deep Analysis</TableHead>
                           <TableHead className={`py-2 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[200px]`}>Email Address</TableHead>
                           <TableHead className={`py-2 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[250px]`}>LinkedIn URL</TableHead>
                           <TableHead className={`py-2 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[100px]`}>Source</TableHead>
@@ -1135,49 +1241,76 @@ const EnrichPage: React.FC = () => {
                               <span className={`${isDarkMode ? "text-gray-400" : "text-gray-600"}`}>{lead.location}</span>
                             </TableCell>
                             <TableCell className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[120px]`}>
-                              {analyzingProfiles.has(lead.id) ? (
-                                <Button variant="outline" className="text-xs h-8" disabled>Analyzing...</Button>
-                              ) : lead.deepAnalysisScore !== undefined ? (
-                                <div className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-700 mx-auto cursor-pointer"
-                                  onClick={() => {
-                                    setDeepAnalysisSelectedLeadId(lead.id);
-                                    setDeepAnalysisSelectedLead(lead);
-                                    setIsDeepAnalysisModalOpen(true);
-                                  }}
-                                >
-                                  <span className="font-medium text-sm">{lead.deepAnalysisScore}</span>
-                                </div>
-                              ) : (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleAnalyzeClick(lead)}
-                                  className="w-full text-xs h-8"
-                                >
-                                  <Eye className="h-3 w-3 mr-1" />
-                                  Analyze
-                                </Button>
-                              )}
+                              <div className="flex flex-col items-center justify-center gap-1">
+                                {/* Check if this profile is currently being analyzed */}
+                                {analyzingProfiles.has(lead.id) ? (
+                                  <div className="flex items-center justify-center">
+                                    <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                                  </div>
+                                ) : deepAnalysisResultsMap[lead.id] ? (
+                                  /* Show completed analysis */
+                                  <div
+                                    className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-700 mx-auto cursor-pointer hover:bg-blue-200 transition-colors"
+                                    onClick={() => {
+                                      setDeepAnalysisSelectedLeadId(lead.id);
+                                      setDeepAnalysisSelectedLead(lead);
+                                      setIsDeepAnalysisModalOpen(true);
+                                    }}
+                                  >
+                                    <span className="font-medium text-sm">
+                                      {deepAnalysisResultsMap[lead.id].analysis?.score || 'N/A'}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  /* Show analyze button for profiles that haven't been analyzed */
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="w-6 h-6 border-2 border-gray-500 rounded-full bg-transparent flex items-center justify-center cursor-pointer transition-all duration-200 ease hover:bg-gray-500 hover:scale-110 group"
+                                      onClick={() => handleAnalyzeClick(lead)}
+                                      title="Our AI is going to analyze this profile"
+                                    >
+                                      <svg width="5" height="7" viewBox="0 0 5 7" className="group-hover:fill-white">
+                                        <polygon points="0,0 0,7 5,3.5" fill="rgb(107 114 128)" stroke="rgb(107 114 128)" strokeWidth="1" />
+                                      </svg>
+                                    </div>
+                                    <span
+                                      className="text-xs text-gray-500 cursor-pointer hover:text-gray-700"
+                                      onClick={() => handleAnalyzeClick(lead)}
+                                    >
+                                      press to run
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[200px]`}>
-                              {lead.email && lead.email.trim() !== '' ? (
-                                <div className="flex items-center gap-1">
-                                  <Mail className="h-3 w-3 text-green-500" />
-                                  <span className={`text-sm truncate ${isDarkMode ? "text-gray-300" : "text-gray-700"}`}>
-                                    {lead.email}
-                                  </span>
-                                </div>
-                              ) : (
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => handleGetEmail(lead.id)}
-                                  disabled={loadingEmails.includes(lead.id)}
-                                  className="w-full text-xs h-8"
-                                >
-                                  {loadingEmails.includes(lead.id) ? 'Getting...' : 'Get Email'}
-                                </Button>
-                              )}
+                              <div className="flex items-center justify-center gap-2">
+                                {loadingEmails.includes(lead.id) ? (
+                                  <div className="flex items-center justify-center">
+                                    <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                                  </div>
+                                ) : lead.email && lead.email.trim() !== '' ? (
+                                  renderEmailDisplay(lead)
+                                ) : (
+                                  <div className="flex items-center gap-2">
+                                    <div
+                                      className="w-6 h-6 border-2 border-gray-500 rounded-full bg-transparent flex items-center justify-center cursor-pointer transition-all duration-200 ease hover:bg-gray-500 hover:scale-110 group"
+                                      onClick={() => handleGetEmail(lead.id)}
+                                      title="Get email address"
+                                    >
+                                      <svg width="5" height="7" viewBox="0 0 5 7" className="group-hover:fill-white">
+                                        <polygon points="0,0 0,7 5,3.5" fill="rgb(107 114 128)" stroke="rgb(107 114 128)" strokeWidth="1" />
+                                      </svg>
+                                    </div>
+                                    <span
+                                      className="text-xs text-gray-500 cursor-pointer hover:text-gray-700"
+                                      onClick={() => handleGetEmail(lead.id)}
+                                    >
+                                      press to run
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
                             </TableCell>
                             <TableCell className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[250px]`}>
                               {lead.linkedinUrl && lead.linkedinUrl.trim() !== '' ? (

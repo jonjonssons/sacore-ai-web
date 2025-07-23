@@ -55,6 +55,8 @@ export interface User {
 
 export interface AuthResponseData {
   user: User;
+  accessToken: string;
+  refreshToken: string;
 }
 
 
@@ -133,6 +135,7 @@ export const ENDPOINTS = {
   AUTH: {
     LOGIN: '/auth/login',
     REGISTER: '/auth/register',
+    UPDATE_ONBOARDING_STATUS: '/auth/onboarding-status',
     LOGOUT: '/auth/logout',
     VERIFY_EMAIL: '/auth/verify-email',
     FORGOT_PASSWORD: '/auth/forgot-password',
@@ -194,16 +197,35 @@ class AuthService {
   async login(credentials: LoginCredentials): Promise<AuthResponseData> {
     try {
       const response = await api.post<ApiResponse<AuthResponseData>>(ENDPOINTS.AUTH.LOGIN, credentials);
-
-      // Store auth accessToken in localStorage
-      if (response.accessToken) {
-        localStorage.setItem('auth_token', response.accessToken);
-        localStorage.setItem('refresh_token', response.refreshToken);
-        localStorage.setItem('user', JSON.stringify(response.user));
+      
+      console.log('Raw API response:', response); // Debug log
+      
+      // Handle different response structures
+      // Case 1: Data is nested in response.data (common with axios)
+      const responseData = response.data || response;
+      
+      console.log('Response data:', responseData); // Debug log
+      
+      // Store auth tokens in localStorage
+      if (responseData.accessToken) {
+        localStorage.setItem('auth_token', responseData.accessToken);
+        localStorage.setItem('refresh_token', responseData.refreshToken);
+        
+        // Store complete user data including hasSeenOnboardingVideo flag
+        const userData = {
+          ...responseData.user,
+          hasSeenOnboardingVideo: responseData.user?.hasSeenOnboardingVideo ?? false
+        };
+        localStorage.setItem('user', JSON.stringify(userData));
+        
+        // Return the actual data
+        return responseData;
+      } else {
+        throw new Error('No access token received from server');
       }
-
-      return response.data;
+      
     } catch (error) {
+      console.error('Auth service error:', error);
       throw error;
     }
   }
@@ -276,6 +298,11 @@ class AuthService {
         message: error.message || ''
       };
     }
+  }
+
+  async updateOnboardingStatus(hasSeenOnboardingVideo: boolean): Promise<ApiResponse<{ message: string }>> {
+    const response = await api.post<ApiResponse<{ message: string }>>(ENDPOINTS.AUTH.UPDATE_ONBOARDING_STATUS, { hasSeenOnboardingVideo });
+    return response.data;
   }
 
   /**

@@ -22,6 +22,8 @@ import OptOut from "./pages/OptOut";
 import CookiePolicy from "./pages/CookiePolicy";
 import About from "./pages/About";
 import CookieConsent from "./components/CookieConsent";
+import { useAuth } from "./contexts/AuthContext";
+import { OnboardingVideoModal } from "./components/OnboardingVideoModal";
 
 const queryClient = new QueryClient();
 
@@ -29,6 +31,8 @@ const queryClient = new QueryClient();
 // In a real app, this would be handled with a proper auth provider
 const App = () => {
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const { user, showOnboardingVideo, closeOnboardingVideo } = useAuth();
+
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [cookiePreferences, setCookiePreferences] = useState(null);
 
@@ -241,6 +245,11 @@ const App = () => {
             <Route path="*" element={<NotFound />} />
           </Routes>
           <CookieConsent onConsentGiven={handleCookieConsent} />
+
+          {/* Onboarding Video Modal */}
+          {showOnboardingVideo && (
+            <OnboardingVideoModal onClose={closeOnboardingVideo} />
+          )}
         </BrowserRouter>
       </TooltipProvider>
     </QueryClientProvider >

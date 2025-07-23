@@ -285,7 +285,7 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ onSearch }) => {
       <div className="text-center mb-10">
         <h1 className={`text-4xl font-bold mb-3 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>WHO ARE YOU LOOKING FOR?</h1>
         <p className={`text-sm mb-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'} max-w-md mx-auto`}>
-          Find people in seconds, your personal sourcing assistant
+          Find people in minutes, your personal sourcing assistant
         </p>
       </div>
 
@@ -461,7 +461,7 @@ const SearchComponent: React.FC<SearchComponentProps> = ({ onSearch }) => {
 
           <div className="mt-6 text-center">
             <p className={`text-sm mb-3 ${isDarkMode ? 'text-gray-300' : 'text-gray-500'}`}>
-              Search by job title, skills, experience, industry, and more • Upload CSV/XLSX files
+              Search by job title, location, industry • Upload CSV/XLSX files
             </p>
             <div className="flex flex-wrap justify-center gap-2">
               <Button variant="outline" size="sm" className={`rounded-full text-xs px-4 py-1 ${isDarkMode ? 'bg-gray-950 border-gray-600 text-white hover:bg-gray-900' : 'bg-gray-50 border-gray-200 text-gray-700 hover:bg-gray-100'}`} onClick={() => setSearchQuery("Account Executive in Stockholm with SaaS Experience")}>

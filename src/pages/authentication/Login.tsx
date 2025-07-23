@@ -9,6 +9,7 @@ import { Eye, EyeOff, LockIcon } from 'lucide-react';
 import { Formik, Form, Field, ErrorMessage, FormikHelpers } from 'formik';
 import * as Yup from 'yup';
 import authService, { LoginCredentials } from '@/services/authService';
+import { useAuth } from '@/contexts/AuthContext';
 
 // Validation schema
 const LoginSchema = Yup.object().shape({
@@ -29,6 +30,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { login } = useAuth();
+
 
   const initialValues: LoginCredentials = {
     email: '',
@@ -44,11 +47,14 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
     try {
       // Actual API call
       const response = await authService.login(values);
+      console.log({ response });
 
       // Call the onLogin callback if provided
       if (onLogin) {
         onLogin(values.email);
       }
+      login(response.accessToken, response.user);
+
 
       // Check if user is admin (based on your user roles)
       const isAdmin = response?.user?.role === 'admin';
