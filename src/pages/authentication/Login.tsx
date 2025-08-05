@@ -65,7 +65,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       });
 
       // Redirect based on user role
-      navigate(isAdmin ? '/admin/dashboard' : '/leads');
+      // navigate(isAdmin ? '/admin/dashboard' : '/');
+      navigate('/');
     } catch (error: any) {
       // Handle login errors
       console.error('Login error:', error);

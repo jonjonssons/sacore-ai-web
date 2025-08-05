@@ -1365,17 +1365,6 @@ const EnrichPage: React.FC = () => {
                 </div>
               </div>
             </div>
-
-            {/* Action Button for Sheet View */}
-            <div className="flex justify-center">
-              <Button
-                onClick={handleEnrich}
-                size="sm"
-                className="bg-black hover:bg-gray-800 text-white px-4 py-2 text-sm"
-              >
-                Start Enrichment
-              </Button>
-            </div>
           </motion.div>
         ) : (
           // Upload/Manual Entry View

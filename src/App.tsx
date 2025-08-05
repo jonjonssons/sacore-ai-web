@@ -24,6 +24,9 @@ import About from "./pages/About";
 import CookieConsent from "./components/CookieConsent";
 import { useAuth } from "./contexts/AuthContext";
 import { OnboardingVideoModal } from "./components/OnboardingVideoModal";
+import UsersPage from "./pages/admin/UsersPage";
+import DashboardView from "./pages/admin/DashboardView";
+import UserDetailsPage from "./pages/admin/UserDetailsPage";
 
 const queryClient = new QueryClient();
 
@@ -89,7 +92,7 @@ const App = () => {
             <Route path="/"
               element={
                 isAuthenticated ?
-                  <Navigate to={"/leads"} replace /> :
+                  <Dashboard onLogout={handleLogout} /> :
                   <Index />
               }
             />
@@ -97,7 +100,7 @@ const App = () => {
               path="/login"
               element={
                 isAuthenticated ?
-                  <Navigate to={"/leads"} replace /> :
+                  <Navigate to={"/"} replace /> :
                   <Login onLogin={handleLogin} />
               }
             />
@@ -105,7 +108,7 @@ const App = () => {
               path="/signup"
               element={
                 isAuthenticated ?
-                  <Navigate to="/leads" replace /> :
+                  <Navigate to="/" replace /> :
                   <SignUp onSignup={handleSignup} />
               }
             />
@@ -148,7 +151,7 @@ const App = () => {
               }
             />
             <Route
-              path="/leads/*"
+              path="//*"
               element={
                 isAuthenticated ?
                   <Dashboard onLogout={handleLogout} /> :
@@ -236,11 +239,23 @@ const App = () => {
               }
             />
             <Route
-              path="/admin/dashboard"
+              path="/settings/*"
+              element={
+                isAuthenticated ?
+                  <Dashboard onLogout={handleLogout} /> :
+                  <Navigate to="/login" replace />
+              }
+            />
+            <Route
+              path="/admin"
               element={
                 <AdminDashboard />
               }
-            />
+            >
+              <Route path="dashboard" element={<DashboardView />} />
+              <Route path="users" element={<UsersPage />} />
+              <Route path="users/:userId" element={<UserDetailsPage />} />
+            </Route>
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

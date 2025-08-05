@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, memo } from "react";
+import { flushSync } from "react-dom";
 import { ArrowLeft, Settings, ExternalLink, Copy, Check, Download, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDown, ArrowUp, Search, BrainCog, Filter, Mail, Linkedin, ChevronDown, Upload, Play } from "lucide-react";
 import {
   Table,
@@ -56,11 +57,12 @@ interface Lead {
   linkedinUrl: string;
   matchedCriteria?: MatchedCriteria;
   matchedCategoriesValue?: any;
-  analysisScore?: number;
+  analysisScore?: number | string;
   analysisDescription?: string;
   analysisBreakdown?: { criterion: string; met: boolean }[];
   source?: string; // Added source field
   contactOutData?: any; // Added contactOutData field
+  linkedinUrlStatus?: 'no_url_found' | 'failed'; // Added status for LinkedIn URL extraction
 }
 
 interface LinkedInProfile {
@@ -98,6 +100,7 @@ interface LeadTableProps {
   setEnrichmentRequestIds?: React.Dispatch<React.SetStateAction<{ [key: string]: string }>>;
   enrichmentData?: any;
   setEnrichmentData?: React.Dispatch<React.SetStateAction<any>>;
+  onBack?: () => void;
 }
 
 interface LeadFilterState {
@@ -122,13 +125,19 @@ interface LeadFilterState {
     brave: boolean;
     google: boolean;
   };
+  linkedinUrlStatus?: {
+    hasUrl: boolean;
+    noUrl: boolean;
+    noUrlFound: boolean;
+    failed: boolean;
+  };
   deepAnalysisCriteria?: {
     minScore?: number;
     criteriaToMatch?: string[];
   };
 }
 
-type SortField = 'name' | 'title' | 'company' | 'industry' | 'location' | 'relevanceScore';
+type SortField = 'name' | 'title' | 'company' | 'industry' | 'location' | 'relevanceScore' | 'analysisScore';
 type SortDirection = 'asc' | 'desc';
 
 // Add this function to format LinkedIn results
@@ -229,7 +238,8 @@ export function LeadTable({
   enrichmentRequestIds = {},
   setEnrichmentRequestIds = () => { },
   enrichmentData = null,
-  setEnrichmentData = () => { }
+  setEnrichmentData = () => { },
+  onBack = () => { }
 }: LeadTableProps) {
   const { isDarkMode } = useTheme();
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
@@ -257,6 +267,12 @@ export function LeadTable({
       signalhire: false,
       brave: false,
       google: false
+    },
+    linkedinUrlStatus: {
+      hasUrl: false,
+      noUrl: false,
+      noUrlFound: false,
+      failed: false
     }
   });
   const [isAdvancedFiltersModalOpen, setIsAdvancedFiltersModalOpen] = useState(false);
@@ -269,7 +285,7 @@ export function LeadTable({
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [isAnalysisModalOpen, setIsAnalysisModalOpen] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   // Add new state for analysis loading
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -299,6 +315,15 @@ export function LeadTable({
     completed: number;
     message: string;
   } | null>(null);
+
+  // New state for batch LinkedIn URL loading
+  const [loadingBatchLinkedInUrls, setLoadingBatchLinkedInUrls] = useState(false);
+  const [linkedInUrlProgress, setLinkedInUrlProgress] = useState<{
+    total: number;
+    completed: number;
+    message: string;
+  } | null>(null);
+  const [loadingLinkedInUrls, setLoadingLinkedInUrls] = useState<string[]>([]);
 
   const [streamCleanup, setStreamCleanup] = useState<(() => void) | null>(null);
 
@@ -966,12 +991,29 @@ export function LeadTable({
             );
             toast.success(`LinkedIn URL found for ${lead.name}: ${profileResult.linkedinUrl}`);
           } else if (profileResult.status === 'no_linkedin_url_found') {
-            toast.error(`No LinkedIn URL found for ${lead.name}`);
+            // Update the lead with no_url_found status
+            setAllLeads(prevLeads =>
+              prevLeads.map(l =>
+                l.id === lead.id ? { ...l, linkedinUrlStatus: 'no_url_found' } : l
+              )
+            );
+            toast.warning(`No LinkedIn URL found for ${lead.name}`);
           } else if (profileResult.status === 'failed') {
-            // Handle failed status with specific error message
+            // Handle failed status with specific error message and update status
             const errorMessage = profileResult.error || 'Failed to fetch profile data';
+            setAllLeads(prevLeads =>
+              prevLeads.map(l =>
+                l.id === lead.id ? { ...l, linkedinUrlStatus: 'failed' } : l
+              )
+            );
             toast.error(`Failed to get LinkedIn URL for ${lead.name}: ${errorMessage}`);
           } else {
+            // Update with failed status for unknown errors
+            setAllLeads(prevLeads =>
+              prevLeads.map(l =>
+                l.id === lead.id ? { ...l, linkedinUrlStatus: 'failed' } : l
+              )
+            );
             toast.error(`Failed to get LinkedIn URL for ${lead.name}`);
           }
         } else {
@@ -989,11 +1031,6 @@ export function LeadTable({
 
   // Add new state for loading emails
   const [loadingEmails, setLoadingEmails] = useState<string[]>([]);
-
-  // Add new state for loading LinkedIn URLs
-  const [loadingLinkedInUrls, setLoadingLinkedInUrls] = useState<string[]>([]);
-
-
 
   // Sorting state
   const [sortField, setSortField] = useState<SortField>('relevanceScore');
@@ -1104,6 +1141,12 @@ export function LeadTable({
 
   // Convert LinkedIn profiles to Lead format
   useEffect(() => {
+    if (linkedInProfiles === undefined) {
+      // This is the initial state before any search. Keep the loader on.
+      setIsLoading(true);
+      setAllLeads([]);
+      return;
+    }
     setIsLoading(true);
     if (linkedInProfiles && linkedInProfiles.length > 0) {
       console.log("Original LinkedIn profiles:", linkedInProfiles);
@@ -1183,8 +1226,9 @@ export function LeadTable({
 
       console.log("Converted leads:", convertedLeads);
       setAllLeads(convertedLeads);
+    } else if (linkedInProfiles) {
+      setAllLeads([]);
     }
-    setIsLoading(false);
   }, [linkedInProfiles]);
 
   // Helper functions for normalization and deduplication
@@ -2212,9 +2256,53 @@ export function LeadTable({
     media: "Media & Entertainment",
   };
 
+  // Helper function to parse analysis score strings like "1/2" and convert to comparable number
+  const parseAnalysisScore = (scoreString: string | number | undefined): number => {
+    if (!scoreString) return -1; // No score = unanalyzed
+
+    if (typeof scoreString === 'number') return scoreString;
+
+    if (typeof scoreString === 'string') {
+      // Handle "X/Y" format
+      const match = scoreString.match(/^(\d+)\/(\d+)$/);
+      if (match) {
+        const numerator = parseInt(match[1]);
+        const denominator = parseInt(match[2]);
+        return denominator > 0 ? numerator / denominator : -1;
+      }
+
+      // Handle plain number strings
+      const parsed = parseFloat(scoreString);
+      return isNaN(parsed) ? -1 : parsed;
+    }
+
+    return -1;
+  };
+
   // Sorting function
   const sortLeads = (leads: Lead[], field: SortField, direction: SortDirection): Lead[] => {
     return [...leads].sort((a, b) => {
+      // Special handling for analysisScore to prioritize analyzed leads
+      if (field === 'analysisScore') {
+        const scoreA = parseAnalysisScore(a.analysisScore);
+        const scoreB = parseAnalysisScore(b.analysisScore);
+
+        // If both are analyzed or both are unanalyzed, sort by score
+        if ((scoreA >= 0 && scoreB >= 0) || (scoreA < 0 && scoreB < 0)) {
+          if (direction === 'asc') {
+            return scoreA - scoreB;
+          } else {
+            return scoreB - scoreA;
+          }
+        }
+
+        // Prioritize analyzed leads (scoreA >= 0) over unanalyzed (scoreA < 0)
+        if (scoreA >= 0 && scoreB < 0) return -1;
+        if (scoreA < 0 && scoreB >= 0) return 1;
+
+        return 0;
+      }
+
       let valueA = a[field];
       let valueB = b[field];
 
@@ -2255,10 +2343,6 @@ export function LeadTable({
 
   // Apply filters to leads
   useEffect(() => {
-    if (allLeads.length === 0) {
-      setFilteredLeads([]);
-      return;
-    }
 
     let filtered = [...allLeads];
 
@@ -2419,10 +2503,44 @@ export function LeadTable({
       }
     }
 
+    // Apply LinkedIn URL Status filters
+    if (filters.linkedinUrlStatus) {
+      const anyLinkedInUrlStatusSelected = Object.values(filters.linkedinUrlStatus).some(value => value === true);
+
+      if (anyLinkedInUrlStatusSelected) {
+        filtered = filtered.filter(lead => {
+          // Has LinkedIn URL
+          if (filters.linkedinUrlStatus?.hasUrl && lead.linkedinUrl && lead.linkedinUrl.trim() !== '') {
+            return true;
+          }
+
+          // No LinkedIn URL (never processed)
+          if (filters.linkedinUrlStatus?.noUrl && (!lead.linkedinUrl || lead.linkedinUrl.trim() === '') && !lead.linkedinUrlStatus) {
+            return true;
+          }
+
+          // No URL Found (searched but none found)
+          if (filters.linkedinUrlStatus?.noUrlFound && lead.linkedinUrlStatus === 'no_url_found') {
+            return true;
+          }
+
+          // Failed to fetch
+          if (filters.linkedinUrlStatus?.failed && lead.linkedinUrlStatus === 'failed') {
+            return true;
+          }
+
+          return false;
+        });
+      }
+    }
+
     // Apply sorting
     filtered = sortLeads(filtered, sortField, sortDirection);
 
     setFilteredLeads(filtered);
+    setTimeout(() => {
+      setIsLoading(false);
+    }, 100);
   }, [allLeads, filters, sortField, sortDirection, deepAnalysisResultsMap, linkedInProfiles]);
 
   const handleProjectCreationSuccess = () => {
@@ -2986,6 +3104,164 @@ export function LeadTable({
     }
   };
 
+  // Function to handle batch LinkedIn URL extraction using streaming API
+  const handleBatchGetLinkedInUrlsClick = async () => {
+    if (selectedLeads.length === 0) {
+      toast.error("Please select at least one profile to get LinkedIn URLs.");
+      return;
+    }
+
+    setLoadingBatchLinkedInUrls(true);
+    // Set loading state for all selected leads
+    setLoadingLinkedInUrls(prev => [...prev, ...selectedLeads]);
+
+    try {
+      // Extract profile IDs from selected leads - use contactOut ID if available
+      const profileIds: string[] = [];
+
+      selectedLeads.forEach(leadId => {
+        const lead = allLeads.find(l => l.id === leadId);
+        if (!lead) return;
+
+        // Use contactOut ID if available, otherwise use the lead ID
+        if (lead.contactOutData?.id) {
+          profileIds.push(lead.contactOutData.id);
+        } else {
+          profileIds.push(leadId);
+        }
+      });
+
+      // Initialize progress tracking
+      setLinkedInUrlProgress({
+        total: profileIds.length,
+        completed: 0,
+        message: 'Starting LinkedIn URL extraction...'
+      });
+
+      const payload = {
+        profileIds: profileIds
+      };
+
+      console.log('Starting streaming LinkedIn URL extraction with payload:', payload);
+
+      // Start the streaming request
+      const cleanup = await authService.getLinkedInUrlsStream(
+        payload,
+        // onStreamData callback
+        (data) => {
+          console.log('LinkedIn URL stream data received:', data);
+
+          switch (data.type) {
+            case 'status':
+              setLinkedInUrlProgress(prev => ({
+                ...prev,
+                total: data.total || prev?.total || profileIds.length,
+                completed: data.completed || prev?.completed || 0,
+                message: data.message || 'Processing...'
+              }));
+              break;
+
+            case 'result':
+              const { profileId, linkedinUrl, fullName, status, error } = data.data;
+
+              console.log(`Processing result for profileId: ${profileId}, status: ${status}, linkedinUrl: ${linkedinUrl}`);
+
+              // Update progress first
+              setLinkedInUrlProgress(prev => ({
+                ...prev,
+                completed: data.completed || (prev ? prev.completed + 1 : 1),
+                message: `Processing ${fullName || 'profile'}...`
+              }));
+
+              // Find and update the corresponding lead
+              setAllLeads(prevLeads => {
+                let leadFound = false;
+                const updatedLeads = prevLeads.map(lead => {
+                  // Match by contactOut ID or lead ID
+                  const matchesProfile = lead.contactOutData?.id === profileId || lead.id === profileId;
+
+                  if (matchesProfile && !leadFound) {
+                    leadFound = true;
+                    console.log(`Found matching lead: ${lead.name} (${lead.id})`);
+
+                    // Remove from loading state
+                    setLoadingLinkedInUrls(prev => prev.filter(id => id !== lead.id));
+
+                    if (status === 'success' && linkedinUrl) {
+                      console.log(`SUCCESS: Updated LinkedIn URL for ${lead.name}: ${linkedinUrl}`);
+                      toast.success(`LinkedIn URL found for ${lead.name}`);
+                      // Update the lead with the LinkedIn URL
+                      return { ...lead, linkedinUrl: linkedinUrl };
+                    } else if (status === 'no_linkedin_url_found') {
+                      console.log(`NO URL: No LinkedIn URL found for ${lead.name}`);
+                      toast.warning(`No LinkedIn URL found for ${lead.name}`);
+                      // Mark as no URL found
+                      return { ...lead, linkedinUrlStatus: 'no_url_found' };
+                    } else if (status === 'failed') {
+                      console.log(`FAILED: Failed to get LinkedIn URL for ${lead.name}: ${error}`);
+                      toast.error(`Failed to get LinkedIn URL for ${lead.name}: ${error || 'Unknown error'}`);
+                      // Mark as failed
+                      return { ...lead, linkedinUrlStatus: 'failed' };
+                    }
+                  }
+                  return lead;
+                });
+
+                // Only return new array if we found and updated a lead
+                return leadFound ? [...updatedLeads] : prevLeads;
+              });
+
+              break;
+
+            case 'complete':
+              setLinkedInUrlProgress(prev => ({
+                ...prev,
+                completed: prev?.total || profileIds.length,
+                message: 'LinkedIn URL extraction complete!'
+              }));
+
+              // Clear all loading states immediately on completion
+              setLoadingBatchLinkedInUrls(false);
+              setLoadingLinkedInUrls([]);
+
+              toast.success(`LinkedIn URL extraction completed! Processed ${data.totalProcessed} profiles.`);
+              break;
+
+            case 'error':
+              console.error('LinkedIn URL stream error:', data);
+              toast.error(`Stream error: ${data.message || 'Unknown error'}`);
+              break;
+          }
+        },
+        // onError callback
+        (error) => {
+          console.error('LinkedIn URL stream error:', error);
+          toast.error('Failed to extract LinkedIn URLs');
+          setLoadingBatchLinkedInUrls(false);
+          setLinkedInUrlProgress(null);
+          setLoadingLinkedInUrls([]); // Clear all loading states on error
+        },
+        // onComplete callback
+        () => {
+          console.log('LinkedIn URL stream completed');
+          setLoadingBatchLinkedInUrls(false);
+          setLinkedInUrlProgress(null);
+          setLoadingLinkedInUrls([]); // Clear all loading states
+        }
+      );
+
+      // Store cleanup function for potential cancellation
+      // setStreamCleanup(() => cleanup); // Uncomment if you want to allow stream cancellation
+
+    } catch (error: any) {
+      console.error('Failed to start streaming LinkedIn URL extraction:', error);
+      toast.error('Failed to start LinkedIn URL extraction');
+      setLoadingBatchLinkedInUrls(false);
+      setLinkedInUrlProgress(null);
+      setLoadingLinkedInUrls([]); // Clear all loading states on error
+    }
+  };
+
   return (
     <div className="w-full" data-has-leads={allLeads.length > 0 ? "true" : "false"}>
       <ProfileAnalysisModal
@@ -3083,6 +3359,16 @@ export function LeadTable({
         <div className={`sticky top-4 mb-4 flex items-center justify-between py-1 px-2 rounded-lg z-10`}>
           {/* Left side - Filters and Search */}
           <div className="flex items-center gap-3 relative z-[10000]">
+            {/* Back Button - New addition */}
+            <Button
+              variant="outline"
+              size="sm"
+              className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
+              onClick={onBack}
+            >
+              <ArrowLeft className="h-3 w-3" />
+              Back to Search
+            </Button>
             {/* Lead Filters */}
             <LeadFilters onApplyFilters={handleFiltersApplied} matchedCategoriesValues={matchedCategoriesValues} />
 
@@ -3130,35 +3416,76 @@ export function LeadTable({
           <div className="flex items-center gap-2">
             {/* Batch Analysis Button - only show when profiles are selected */}
             {selectedLeads.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
-                onClick={handleBatchAnalyzeClick}
-              >
-                <BrainCog className="h-3 w-3" />
-                Deep Analyze ({selectedLeads.length})
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
+                      onClick={handleBatchAnalyzeClick}
+                    >
+                      <BrainCog className="h-3 w-3" />
+                      Deep Analyze ({selectedLeads.length})
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{selectedLeads.length} profile{selectedLeads.length > 1 ? 's' : ''} × 1 credit = {selectedLeads.length} credit{selectedLeads.length > 1 ? 's' : ''}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             )}
 
             {/* Batch Get Emails Button - only show when profiles are selected */}
             {selectedLeads.length > 0 && (
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''} ${loadingBatchEmails ? 'opacity-50' : ''}`}
+                      onClick={handleBatchGetEmailsClick}
+                      disabled={loadingBatchEmails}
+                    >
+                      {loadingBatchEmails ? (
+                        <>
+                          <div className="animate-spin h-3 w-3 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                          Finding Emails...
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="h-3 w-3" />
+                          Get Emails ({selectedLeads.length})
+                        </>
+                      )}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{selectedLeads.length} profile{selectedLeads.length > 1 ? 's' : ''} × 3 credits = {selectedLeads.length * 3} credit{selectedLeads.length * 3 > 1 ? 's' : ''}</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            )}
+
+            {/* Batch Get LinkedIn URLs Button - only show when profiles are selected */}
+            {selectedLeads.length > 0 && (
               <Button
                 variant="outline"
                 size="sm"
-                className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''} ${loadingBatchEmails ? 'opacity-50' : ''}`}
-                onClick={handleBatchGetEmailsClick}
-                disabled={loadingBatchEmails}
+                className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''} ${loadingBatchLinkedInUrls ? 'opacity-50' : ''}`}
+                onClick={handleBatchGetLinkedInUrlsClick}
+                disabled={loadingBatchLinkedInUrls}
               >
-                {loadingBatchEmails ? (
+                {loadingBatchLinkedInUrls ? (
                   <>
                     <div className="animate-spin h-3 w-3 border-2 border-gray-500 border-t-transparent rounded-full"></div>
-                    Finding Emails...
+                    Finding URLs...
                   </>
                 ) : (
                   <>
-                    <Mail className="h-3 w-3" />
-                    Get Emails ({selectedLeads.length})
+                    <Linkedin className="h-3 w-3" />
+                    Get LinkedIn URLs ({selectedLeads.length})
                   </>
                 )}
               </Button>
@@ -3307,7 +3634,7 @@ export function LeadTable({
                   : lead.emailAddress,
                 linkedinUrl: lead.linkedinUrl,
                 relevanceScore: lead.relevanceScore,
-                analysis: { score: lead.analysisScore || 0 }
+                analysis: { score: parseAnalysisScore(lead.analysisScore) }
               }))}
               selectedProfiles={selectedLeads}
               fileName="search_results"
@@ -3319,7 +3646,14 @@ export function LeadTable({
         <div>
           {/* <LeadFilters onApplyFilters={handleFiltersApplied} matchedCategoriesValues={matchedCategoriesValues} /> */}
 
-          {filteredLeads.length > 0 ? (
+          {isLoading ? (
+            <div className={`text-center py-10 rounded-md border ${isDarkMode ? 'bg-muted border-muted/40' : 'bg-white border-gray-300'}`}>
+              <div className="mx-auto h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+              <p className={`mt-4 ${isDarkMode ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                Loading profiles...
+              </p>
+            </div>
+          ) : filteredLeads.length > 0 ? (
             <div
               className={`rounded-md border shadow-sm relative ${isDarkMode
                 ? "border-gray-700 bg-gray-900"
@@ -3374,7 +3708,12 @@ export function LeadTable({
                       >
                         Score {renderSortIcon('relevanceScore')}
                       </TableHead>
-                      <TableHead className={`py-1 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[160px]`}>Deep Analysis</TableHead>
+                      <TableHead
+                        className={`py-1 font-medium cursor-pointer border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[160px]`}
+                        onClick={() => handleSort('analysisScore')}
+                      >
+                        Deep Analysis {renderSortIcon('analysisScore')}
+                      </TableHead>
                       <TableHead className={`py-1 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[200px]`}>Email Address</TableHead>
                       <TableHead className={`py-1 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[250px]`}>LinkedIn URL</TableHead>
                       <TableHead className={`py-1 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[100px]`}>Source</TableHead>
@@ -3429,7 +3768,7 @@ export function LeadTable({
                             className="flex flex-col items-center cursor-pointer"
                             onClick={() => handleOpenAnalysisModal(lead)}
                           >
-                            <div className={`flex items-center justify-center w-10 h-10 rounded-full ${isDarkMode ? "bg-yellow-900 text-yellow-300" : "bg-yellow-100 text-yellow-700"} mx-auto`}>
+                            <div className={`flex items-center justify-center w-10 h-10 rounded-full ${isDarkMode ? "bg-green-900 text-green-300" : "bg-green-100 text-green-700"} mx-auto`}>
                               <span className="font-medium text-sm">
                                 {lead.relevanceScore !== undefined ? lead.relevanceScore : 0}
                               </span>
@@ -3443,7 +3782,7 @@ export function LeadTable({
                               <div className="flex items-center justify-center">
                                 <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
                               </div>
-                            ) : deepAnalysisResultsMap[lead.id] ? (
+                            ) : lead.analysisScore ? (
                               /* Show completed analysis */
                               <div
                                 className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-700 mx-auto cursor-pointer hover:bg-blue-200 transition-colors"
@@ -3454,7 +3793,7 @@ export function LeadTable({
                                 }}
                               >
                                 <span className="font-medium text-sm">
-                                  {deepAnalysisResultsMap[lead.id].analysis?.score || 'N/A'}
+                                  {lead.analysisScore || 'N/A'}
                                 </span>
                               </div>
                             ) : (
@@ -3527,6 +3866,14 @@ export function LeadTable({
                                 {lead.linkedinUrl}
                                 <ExternalLink className="h-3 w-3 flex-shrink-0" />
                               </a>
+                            ) : lead.linkedinUrlStatus === 'no_url_found' ? (
+                              <span className="text-xs text-orange-600 text-center">
+                                No URL found
+                              </span>
+                            ) : lead.linkedinUrlStatus === 'failed' ? (
+                              <span className="text-xs text-red-600 text-center">
+                                Failed to fetch
+                              </span>
                             ) : (
                               <div className="flex items-center gap-2">
                                 <div
@@ -3621,24 +3968,19 @@ export function LeadTable({
               </div>
 
             </div>
+          ) : isLoading ? (
+            <div className={`text-center py-10 rounded-md border ${isDarkMode ? 'bg-muted border-muted/40' : 'bg-white border-gray-300'}`}>
+              <div className="mx-auto h-8 w-8 border-4 border-t-blue-500 border-blue-200 rounded-full animate-spin mb-4"></div>
+              <p className={`${isDarkMode ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                Loading profiles...
+              </p>
+            </div>
           ) : (
-            <>
-              {filteredLeads.length === 0 ? (
-                <div className={`text-center py-10 rounded-md border ${isDarkMode ? 'bg-muted border-muted/40' : 'bg-white border-gray-300'}`}>
-                  <p className={`mt-4 ${isDarkMode ? 'text-muted-foreground' : 'text-gray-600'}`}>
-                    No profiles found.
-                  </p>
-                </div>
-              ) : (
-                <div className={`text-center py-10 rounded-md border ${isDarkMode ? 'bg-muted border-muted/40' : 'bg-white border-gray-300'}`}>
-                  <div className="mx-auto h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-                  <p className={`mt-4 ${isDarkMode ? 'text-muted-foreground' : 'text-gray-600'}`}>
-                    Loading profiles...
-                  </p>
-                </div>
-
-              )}
-            </>
+            <div className={`text-center py-10 rounded-md border ${isDarkMode ? 'bg-muted border-muted/40' : 'bg-white border-gray-300'}`}>
+              <p className={`mt-4 ${isDarkMode ? 'text-muted-foreground' : 'text-gray-600'}`}>
+                No profiles found.
+              </p>
+            </div>
           )}
         </div>
       </>

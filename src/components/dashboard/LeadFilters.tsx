@@ -24,6 +24,12 @@ interface LeadFilterState {
     brave: boolean;
     google: boolean;
   };
+  linkedinUrlStatus?: {
+    hasUrl: boolean;
+    noUrl: boolean;
+    noUrlFound: boolean;
+    failed: boolean;
+  };
 }
 
 interface LeadFiltersProps {
@@ -49,6 +55,12 @@ export function LeadFilters({ onApplyFilters, matchedCategoriesValues = [] }: Le
       signalhire: false,
       brave: false,
       google: false
+    },
+    linkedinUrlStatus: {
+      hasUrl: false,
+      noUrl: false,
+      noUrlFound: false,
+      failed: false
     }
   });
   const [appliedFilters, setAppliedFilters] = useState<LeadFilterState>(filters);
@@ -130,7 +142,8 @@ export function LeadFilters({ onApplyFilters, matchedCategoriesValues = [] }: Le
   const activeFilterCount = Object.values(appliedFilters.scoreCategories).filter(Boolean).length +
     (appliedFilters.specificRequirements?.length || 0) +
     Object.values(appliedFilters.source || {}).filter(Boolean).length +
-    Object.values(appliedFilters.fetchedFrom || {}).filter(Boolean).length;
+    Object.values(appliedFilters.fetchedFrom || {}).filter(Boolean).length +
+    Object.values(appliedFilters.linkedinUrlStatus || {}).filter(Boolean).length;
 
   // Handle checkbox changes
   const handleCheckboxChange = (category: keyof LeadFilterState, field: string) => {
@@ -156,6 +169,14 @@ export function LeadFilters({ onApplyFilters, matchedCategoriesValues = [] }: Le
         [category]: {
           ...filters[category],
           [field]: !filters[category]?.[field as keyof typeof filters.fetchedFrom]
+        }
+      });
+    } else if (category === 'linkedinUrlStatus') {
+      setFilters({
+        ...filters,
+        [category]: {
+          ...filters[category],
+          [field]: !filters[category]?.[field as keyof typeof filters.linkedinUrlStatus]
         }
       });
     }
@@ -201,6 +222,12 @@ export function LeadFilters({ onApplyFilters, matchedCategoriesValues = [] }: Le
         signalhire: false,
         brave: false,
         google: false
+      },
+      linkedinUrlStatus: {
+        hasUrl: false,
+        noUrl: false,
+        noUrlFound: false,
+        failed: false
       }
     };
 
@@ -299,6 +326,52 @@ export function LeadFilters({ onApplyFilters, matchedCategoriesValues = [] }: Le
                   />
                   <label htmlFor="source-sacore-ai" className="text-sm font-medium">
                     WEB Search
+                  </label>
+                </div>
+              </div>
+
+              <div className={`px-4 py-3 border-t border-b text-sm font-medium ${isDarkMode ? "border-gray-700 text-gray-400" : "border-gray-200 text-gray-600"}`}>
+                LinkedIn URL Status
+              </div>
+              <div className="px-4 py-3 space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="linkedin-has-url"
+                    checked={filters.linkedinUrlStatus?.hasUrl || false}
+                    onCheckedChange={() => handleCheckboxChange("linkedinUrlStatus", "hasUrl")}
+                  />
+                  <label htmlFor="linkedin-has-url" className="text-sm font-medium">
+                    Has LinkedIn URL
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="linkedin-no-url"
+                    checked={filters.linkedinUrlStatus?.noUrl || false}
+                    onCheckedChange={() => handleCheckboxChange("linkedinUrlStatus", "noUrl")}
+                  />
+                  <label htmlFor="linkedin-no-url" className="text-sm font-medium">
+                    No LinkedIn URL
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="linkedin-no-url-found"
+                    checked={filters.linkedinUrlStatus?.noUrlFound || false}
+                    onCheckedChange={() => handleCheckboxChange("linkedinUrlStatus", "noUrlFound")}
+                  />
+                  <label htmlFor="linkedin-no-url-found" className="text-sm font-medium">
+                    No URL Found (Searched)
+                  </label>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="linkedin-failed"
+                    checked={filters.linkedinUrlStatus?.failed || false}
+                    onCheckedChange={() => handleCheckboxChange("linkedinUrlStatus", "failed")}
+                  />
+                  <label htmlFor="linkedin-failed" className="text-sm font-medium">
+                    Failed to Fetch
                   </label>
                 </div>
               </div>

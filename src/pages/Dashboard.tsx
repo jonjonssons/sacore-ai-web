@@ -58,6 +58,7 @@ import { useTheme } from '@/contexts/ThemeContext';
 import ProjectPage from './ProjectPage';
 import CandidatesPage from './CandidatesPage';
 import EnrichPage from './EnrichPage';
+import SettingsPage from './SettingsPage';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 
@@ -127,7 +128,7 @@ const TaskCard: React.FC<TaskCardProps> = ({ icon, title, description, buttonTex
   );
 };
 
-const AppHeader: React.FC<{ userData: any; isCollapsed: boolean; toggleSidebar: () => void }> = ({ userData, isCollapsed, toggleSidebar }) => {
+const AppHeader: React.FC<{ userData: any; isCollapsed: boolean; toggleSidebar: () => void; onLogoClick: () => void }> = ({ userData, isCollapsed, toggleSidebar, onLogoClick }) => {
   const { isDarkMode, toggleDarkMode } = useTheme();
   const navigate = useNavigate();
   const [showPricingDialog, setShowPricingDialog] = useState(false);
@@ -152,10 +153,11 @@ const AppHeader: React.FC<{ userData: any; isCollapsed: boolean; toggleSidebar: 
     >
       <div className="flex items-center gap-2">
         <motion.span
-          className={`font-bold text-2xl ${isDarkMode ? 'text-white' : 'bg-black text-transparent bg-clip-text'}`}
+          className={`font-bold text-2xl cursor-pointer hover:opacity-80 transition-opacity ${isDarkMode ? 'text-white' : 'bg-black text-transparent bg-clip-text'}`}
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3 }}
+          onClick={onLogoClick}
         >
           SACORE AI
         </motion.span>      </div>
@@ -221,6 +223,7 @@ const AppHeader: React.FC<{ userData: any; isCollapsed: boolean; toggleSidebar: 
             {[
               { icon: User, label: 'Profile', onClick: () => navigate('/profile') },
               { icon: KeyRound, label: 'Change Password', onClick: () => setShowChangePasswordDialog(true) },
+              { icon: Settings, label: 'Settings', onClick: () => navigate('/settings') },
               {
                 icon: CircleHelp,
                 label: 'Support',
@@ -233,6 +236,15 @@ const AppHeader: React.FC<{ userData: any; isCollapsed: boolean; toggleSidebar: 
               },
               // { icon: Bell, label: 'Notifications' },
               { icon: CreditCard, label: 'Upgrade Plan', onClick: () => setShowPricingDialog(true) },
+              // Add Admin Panel button only for admin users
+              ...(userData && userData.role === 'admin' ? [
+                {
+                  icon: Shield,
+                  label: 'Admin Panel',
+                  onClick: () => navigate('/admin/dashboard'),
+                  className: 'text-blue-600 hover:bg-blue-100 focus:bg-blue-200'
+                }
+              ] : []),
               {
                 icon: LogOut,
                 label: 'Log out',
@@ -1441,7 +1453,7 @@ const AppSidebar: React.FC<{ onHandleLogout: () => void; activePage: string; set
                     active={activePage === 'dashboard'}
                   />
                 </div> */}
-                <div onClick={() => handleMenuClick('leads', '/leads')}>
+                <div onClick={() => handleMenuClick('leads', '/')}>
                   <SidebarMenuItemComponent
                     icon={Search}
                     label="Search"
@@ -1668,13 +1680,25 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
   const [activePage, setActivePage] = useState('leads');
   const [userData, setUserData] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchPhase, setSearchPhase] = useState<'search' | 'requirements' | 'leads'>('search');
   // Use the useLocation hook to track route changes
   const location = useLocation();
+  const navigate = useNavigate();
 
   const toggleSidebar = () => {
     setIsCollapsed(prev => !prev);
   };
 
+  // Add function to handle logo click with proper navigation logic
+  const handleLogoClick = () => {
+    if (activePage === 'leads' && searchPhase === 'leads') {
+      // If we're viewing leads, go back to search
+      setSearchPhase('search');
+    } else {
+      // Otherwise navigate to home
+      navigate('/');
+    }
+  };
 
   // Fetch user data
   useEffect(() => {
@@ -1697,12 +1721,10 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     fetchUserData();
   }, []);
 
-
-
   useEffect(() => {
     const pathname = location.pathname;
 
-    if (pathname.includes('leads')) {
+    if (pathname === '/' || pathname.includes('leads')) {
       setActivePage('leads');
     } else if (pathname.includes('enrich')) {
       setActivePage('enrich');
@@ -1727,6 +1749,8 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       setActivePage(`project-${projectId}`);
     } else if (pathname.includes('candidates')) {
       setActivePage('candidates');
+    } else if (pathname.includes('settings')) {
+      setActivePage('settings');
     } else {
       setActivePage('dashboard');
     }
@@ -1741,7 +1765,7 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     >
       <motion.div className="flex flex-col h-screen w-full overflow-hidden" data-sidebar="root">
         {/* Add the header at the top */}
-        <AppHeader userData={userData} isCollapsed={isCollapsed} toggleSidebar={toggleSidebar} />
+        <AppHeader userData={userData} isCollapsed={isCollapsed} toggleSidebar={toggleSidebar} onLogoClick={handleLogoClick} />
 
         {/* Main content area with sidebar and content */}
         <div className="flex flex-1 overflow-hidden">
@@ -1753,7 +1777,13 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
             isCollapsed={isCollapsed}
             toggleSidebar={toggleSidebar}
           />
-          <DashboardContent onLogout={onLogout} activePage={activePage} userData={userData} />
+          <DashboardContent
+            onLogout={onLogout}
+            activePage={activePage}
+            userData={userData}
+            searchPhase={searchPhase}
+            setSearchPhase={setSearchPhase}
+          />
         </div>
       </motion.div>
     </SidebarProvider>
@@ -1761,9 +1791,14 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
 };
 
 // Dashboard Content Component that uses useSidebar
-const DashboardContent: React.FC<{ onLogout: () => void, activePage: string, userData: any }> = ({ onLogout, activePage, userData }) => {
+const DashboardContent: React.FC<{
+  onLogout: () => void,
+  activePage: string,
+  userData: any,
+  searchPhase: 'search' | 'requirements' | 'leads',
+  setSearchPhase: React.Dispatch<React.SetStateAction<'search' | 'requirements' | 'leads'>>
+}> = ({ onLogout, activePage, userData, searchPhase, setSearchPhase }) => {
   const [showBetaMessage, setShowBetaMessage] = useState(true);
-  const [searchPhase, setSearchPhase] = useState<'search' | 'requirements' | 'leads'>('search');
   const [searchQuery, setSearchQuery] = useState('');
   const [completedTasks, setCompletedTasks] = useState(0);
   const totalTasks = 6;
@@ -1865,6 +1900,7 @@ const DashboardContent: React.FC<{ onLogout: () => void, activePage: string, use
     setLinkedInProfiles(profileData);
     setSearchPhase('leads');
   };
+
   const calculateTrialDaysRemaining = () => {
     if (!userData || !userData.trialStartDate) return 0;
 
@@ -1880,225 +1916,6 @@ const DashboardContent: React.FC<{ onLogout: () => void, activePage: string, use
 
   const { isDarkMode } = useTheme();
 
-  // if (activePage === "dashboard") {
-  //   return (
-  //     <div className={`w-full h-full max-h-full overflow-y-auto ${isDarkMode ? 'bg-primary' : ''}`}>
-  //       {dashboardLoading ? (
-  //         <div className="flex justify-center items-center h-full">
-  //           <p className={`${isDarkMode ? 'text-white' : 'text-black'}`}>Loading dashboard data...</p>
-  //         </div>
-  //       ) : dashboardError ? (
-  //         <div className="flex justify-center items-center h-full">
-  //           <p className={`${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>{dashboardError}</p>
-  //         </div>
-  //       ) : (
-  //         <>
-  //           {userData && !userData.trialEnded && (
-  //             <motion.div
-  //               className={`h-16 border-b px-6 flex items-center justify-between ${isDarkMode ? 'bg-gray-800' : 'bg-white/80'} backdrop-black-lg flex-shrink-0`}
-  //               initial={{ opacity: 0 }}
-  //               animate={{ opacity: 1 }}
-  //               transition={{ duration: 0.5 }}
-  //             >
-  //               <div className="flex items-center gap-3">
-  //                 <motion.div
-  //                   className={`h-[40px] py-2 px-4 flex border-gray-200 items-center justify-between rounded-lg ${isDarkMode ? 'bg-gray-700 text-white border-gray-600' : 'bg-gray-100 text-black border-gray-200'}`}
-  //                   initial={{ opacity: 0, x: -20 }}
-  //                   animate={{ opacity: 1, x: 0 }}
-  //                   transition={{ duration: 0.5 }}
-  //                 >
-  //                   <div className={`font-medium ${isDarkMode ? 'border-gray-600 text-white' : 'border-gray-200 text-black'}`}>{sidebarCollapsed ? calculateTrialDaysRemaining() + ' days trial left' : calculateTrialDaysRemaining() + ' days of free trial left'}</div>
-  //                   <Button
-  //                     className={`${isDarkMode ? 'bg-gray-800 hover:bg-gray-700' : 'bg-black hover:bg-black-50'} h-[30px] ml-3`}
-  //                     onClick={() => {
-  //                       console.log("rahul best hai");
-
-  //                       setShowPricingDialog(true);
-  //                       // setShowTrialBanner(false);
-  //                     }}
-  //                   >
-  //                     {sidebarCollapsed ? 'Upgrade' : 'Upgrade Plan'}
-  //                   </Button>
-  //                 </motion.div>
-  //               </div>
-  //             </motion.div>
-  //           )}
-  //           <div className="px-6 py-4">
-  //             <div className="mb-10">
-  //               <div className="text-center">
-  //                 <h1 className={`text-3xl md:text-4xl font-extrabold tracking-tight ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-  //                   Welcome Back, {userData ? userData.firstName : 'User'}
-  //                 </h1>
-  //                 <p className={`mt-2 text-lg ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
-  //                   Here's your dashboard overview — a reflection of your search for excellence.
-  //                 </p>
-  //               </div>
-  //             </div>
-
-  //             <motion.div
-  //               initial={{ opacity: 0 }}
-  //               animate={{ opacity: 1 }}
-  //               exit={{ opacity: 0 }}
-  //               transition={{ duration: 0.3 }}
-  //             >
-
-  //               {/* New Dashboard Data Display */}
-  //               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-10">
-  //                 {/* Past Searches Card */}
-  //                 <motion.div
-  //                   whileHover={{ scale: 1.02 }}
-  //                   transition={{ type: "spring", stiffness: 300 }}
-  //                   className={`relative overflow-hidden rounded-2xl shadow-lg ${isDarkMode ? 'bg-gray-950 text-white' : 'bg-white text-gray-800'}`}
-  //                 >
-  //                   <div className="absolute top-0 right-0 w-32 h-32 -mr-10 -mt-10 rounded-full bg-black/5"></div>
-  //                   <div className="absolute bottom-0 left-0 w-24 h-24 -ml-8 -mb-8 rounded-full bg-black/5"></div>
-  //                   <div className="p-6 relative z-10">
-  //                     <div className="flex items-center mb-4">
-  //                       <div className={`p-3 rounded-xl mr-3 ${isDarkMode ? 'bg-gray-700' : 'bg-black'}`}>
-  //                         <Search className={`h-5 w-5 ${isDarkMode ? 'text-white' : 'text-white'}`} />
-  //                       </div>
-  //                       <h2 className="text-xl font-bold">Your Past Searches</h2>
-  //                     </div>
-  //                     <div className={`h-0.5 w-1/4 mb-4 ${isDarkMode ? 'bg-white/20' : 'bg-black/20'}`}></div>
-
-  //                     {pastSearches.length === 0 ? (
-  //                       <div className="flex flex-col items-center justify-center py-8">
-  //                         <Search className={`h-12 w-12 mb-3 opacity-20 ${isDarkMode ? 'text-white' : 'text-black'}`} />
-  //                         <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} text-center`}>No past searches found.</p>
-  //                       </div>
-  //                     ) : (
-  //                       <ul className="space-y-3 max-h-80 overflow-y-auto pr-1 scrollbar-hide">
-  //                         {pastSearches.map((search) => (
-  //                           <li
-  //                             key={search._id}
-  //                             className={`p-3 rounded-lg transition-all ${isDarkMode ? 'hover:bg-gray-700 bg-gray-800/50' : 'hover:bg-gray-100 bg-gray-50'}`}
-  //                           >
-  //                             <span className="font-semibold block">{search.query}</span>
-  //                             <span className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-  //                               {new Date(search.createdAt).toLocaleString()}
-  //                             </span>
-  //                           </li>
-  //                         ))}
-  //                       </ul>
-
-  //                     )}
-  //                   </div>
-  //                 </motion.div>
-
-  //                 {/* Projects Card */}
-  //                 <motion.div
-  //                   whileHover={{ scale: 1.02 }}
-  //                   transition={{ type: "spring", stiffness: 300 }}
-  //                   className={`relative overflow-hidden rounded-2xl shadow-lg ${isDarkMode ? 'bg-gray-950 text-white' : 'bg-white text-gray-800'}`}
-  //                 >
-  //                   <div className="absolute top-0 left-0 w-40 h-40 -ml-20 -mt-20 rounded-full bg-black/5"></div>
-  //                   <div className="absolute bottom-0 right-0 w-32 h-32 -mr-16 -mb-16 rounded-full bg-black/5"></div>
-  //                   <div className="p-6 relative z-10">
-  //                     <div className="flex items-center mb-4">
-  //                       <div className={`p-3 rounded-xl mr-3 ${isDarkMode ? 'bg-gray-700' : 'bg-black'}`}>
-  //                         <FileBox className={`h-5 w-5 ${isDarkMode ? 'text-white' : 'text-white'}`} />
-  //                       </div>
-  //                       <h2 className="text-xl font-bold">Your Projects</h2>
-  //                     </div>
-  //                     <div className={`h-0.5 w-1/4 mb-4 ${isDarkMode ? 'bg-white/20' : 'bg-black/20'}`}></div>
-
-  //                     {projects.length === 0 ? (
-  //                       <div className="flex flex-col items-center justify-center py-8">
-  //                         <FileBox className={`h-12 w-12 mb-3 opacity-20 ${isDarkMode ? 'text-white' : 'text-black'}`} />
-  //                         <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} text-center`}>No projects found.</p>
-  //                       </div>
-  //                     ) : (
-  //                       <ul className="space-y-3 max-h-80 overflow-y-auto overflow-x-hidden pr-1 scrollbar-hide">
-  //                         {projects
-  //                           .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-  //                           .slice(0, 4)
-  //                           .map((project) => (
-  //                             <motion.li
-  //                               key={project._id}
-  //                               className={`p-3 rounded-lg transition-all ${isDarkMode ? 'hover:bg-gray-700 bg-gray-800/50' : 'hover:bg-gray-100 bg-gray-50'
-  //                                 }`}
-  //                               whileHover={{ x: 5 }}
-  //                             >
-  //                               <div className="flex justify-between items-center">
-  //                                 <span className="font-semibold block">{project.name}</span>
-  //                                 <Badge
-  //                                   className={`${isDarkMode ? 'bg-gray-600 text-white' : 'bg-black text-white'
-  //                                     }`}
-  //                                 >
-  //                                   {profileCountMap[project.name] || 0}
-  //                                 </Badge>
-  //                               </div>
-  //                               <span
-  //                                 className={`text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-500'
-  //                                   }`}
-  //                               >
-  //                                 {new Date(project.createdAt).toLocaleString()}
-  //                               </span>
-  //                             </motion.li>
-  //                           ))}
-  //                       </ul>
-
-  //                     )}
-  //                   </div>
-  //                 </motion.div>
-
-  //                 {/* Profile Counts Card */}
-  //                 <motion.div
-  //                   whileHover={{ scale: 1.02 }}
-  //                   transition={{ type: "spring", stiffness: 300 }}
-  //                   className={`relative overflow-hidden rounded-2xl shadow-lg ${isDarkMode ? 'bg-gray-950 text-white' : 'bg-white text-gray-800'}`}
-  //                 >
-  //                   <div className="absolute top-0 right-0 w-36 h-36 -mr-16 -mt-16 rounded-full bg-black/5"></div>
-  //                   <div className="absolute bottom-0 left-0 w-28 h-28 -ml-14 -mb-14 rounded-full bg-black/5"></div>
-  //                   <div className="p-6 relative z-10">
-  //                     <div className="flex items-center mb-4">
-  //                       <div className={`p-3 rounded-xl mr-3 ${isDarkMode ? 'bg-gray-700' : 'bg-black'}`}>
-  //                         <Users className={`h-5 w-5 ${isDarkMode ? 'text-white' : 'text-white'}`} />
-  //                       </div>
-  //                       <h2 className="text-xl font-bold">Profile Distribution</h2>
-  //                     </div>
-  //                     <div className={`h-0.5 w-1/4 mb-4 ${isDarkMode ? 'bg-white/20' : 'bg-black/20'}`}></div>
-
-  //                     {Object.keys(profileCountMap).length === 0 ? (
-  //                       <div className="flex flex-col items-center justify-center py-8">
-  //                         <Users className={`h-12 w-12 mb-3 opacity-20 ${isDarkMode ? 'text-white' : 'text-black'}`} />
-  //                         <p className={`${isDarkMode ? 'text-gray-400' : 'text-gray-600'} text-center`}>No profile data available.</p>
-  //                       </div>
-  //                     ) : (
-  //                       <div className="space-y-4 max-h-80 overflow-y-auto overflow-x-hidden pr-1 scrollbar-hide">
-  //                         {Object.entries(profileCountMap).map(([projectName, count], index) => {
-  //                           const percentage = Math.min(100, Math.max(10, (count / 100) * 100));
-  //                           return (
-  //                             <div key={projectName} className="space-y-1">
-  //                               <div className="flex justify-between items-center">
-  //                                 <span className={`font-medium ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-  //                                   {projectName}
-  //                                 </span>
-  //                                 <span className="font-bold">{count}</span>
-  //                               </div>
-  //                               <div className={`h-2 w-full rounded-full ${isDarkMode ? 'bg-gray-800' : 'bg-gray-200'}`}>
-  //                                 <motion.div
-  //                                   className={`h-full rounded-full ${isDarkMode ? 'bg-white' : 'bg-black'}`}
-  //                                   initial={{ width: 0 }}
-  //                                   animate={{ width: `${percentage}%` }}
-  //                                   transition={{ duration: 1, delay: index * 0.2 }}
-  //                                 />
-  //                               </div>
-  //                             </div>
-  //                           );
-  //                         })}
-  //                       </div>
-  //                     )}
-  //                   </div>
-  //                 </motion.div>
-  //               </div>
-  //             </motion.div>
-  //           </div>
-  //         </>
-  //       )}
-  //     </div>
-  //   );
-  // } else 
   if (activePage === "profile") {
     return (
       <div className={`w-full h-full max-h-full overflow-y-auto ${isDarkMode ? 'bg-primary' : ''}`}>
@@ -2176,7 +1993,8 @@ const DashboardContent: React.FC<{ onLogout: () => void, activePage: string, use
                   enrichmentRequestIds={enrichmentRequestIds}
                   setEnrichmentRequestIds={setEnrichmentRequestIds}
                   enrichmentData={enrichmentData}
-                  setEnrichmentData={setEnrichmentData} />
+                  setEnrichmentData={setEnrichmentData}
+                  onBack={handleBackToSearch} />
               </div>
             </motion.div>
           )}
@@ -2240,6 +2058,12 @@ const DashboardContent: React.FC<{ onLogout: () => void, activePage: string, use
     return (
       <div className={`w-full h-full max-h-full overflow-y-auto ${isDarkMode ? 'bg-primary' : ''}`}>
         <EnrichPage />
+      </div>
+    );
+  } else if (activePage === "settings") {
+    return (
+      <div className={`w-full h-full max-h-full overflow-y-auto ${isDarkMode ? 'bg-primary' : ''}`}>
+        <SettingsPage />
       </div>
     );
   }

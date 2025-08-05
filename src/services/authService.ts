@@ -165,6 +165,9 @@ export const ENDPOINTS = {
   },
   ADMIN: {
     DASHBOARD: '/admin/dashboard',
+    USERS: '/admin/users',
+    USER_DETAILS: (userId: string) => `/admin/users/${userId}`,
+    UPDATE_USER: (userId: string) => `/admin/users/${userId}`,
   },
   SAVED_PROFILES: {
     SAVE: '/saved-profiles',
@@ -187,8 +190,45 @@ export const ENDPOINTS = {
   },
   SEARCH: {
     IMPORT_CSV: '/search/import-csv'
-  }
+  },
+  BILLING: {
+    SUBSCRIPTION_DETAILS: '/stripe/subscription',
+    CANCEL_SUBSCRIPTION: '/stripe/subscription/cancel',
+    CANCEL_SUBSCRIPTION_IMMEDIATELY: '/stripe/subscription/cancel-immediately',
+    INVOICES: '/stripe/invoices',
+  },
 };
+
+// Add new interfaces for subscription and invoice data
+interface SubscriptionDetails {
+  plan: {
+    id: string;
+    name: string;
+  };
+  status: string;
+  amount: number;
+  billingInterval: 'monthly' | 'yearly';
+  nextBillingDate: string;
+  paymentMethod?: {
+    last4: string;
+    expMonth: string;
+    expYear: string;
+    brand: string;
+  };
+}
+
+interface Invoice {
+  id: string;
+  number: string;
+  created: string;
+  amount_paid: number;
+  status: string;
+  invoice_pdf: string;
+}
+
+interface InvoicesResponse {
+  invoices: Invoice[];
+}
 
 class AuthService {
   /**
@@ -569,6 +609,51 @@ async getUserDashboard(): Promise<ApiResponse<any>> {
   async adminDashboard() {
     try {
       const response = await api.get(ENDPOINTS.ADMIN.DASHBOARD);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getUsers(page = 1, limit = 10) {
+    try {
+      const response = await api.get(`${ENDPOINTS.ADMIN.USERS}?page=${page}&limit=${limit}`);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async getUserDetails(userId: string) {
+    try {
+      const response = await api.get(ENDPOINTS.ADMIN.USER_DETAILS(userId));
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async updateUser(userId: string, data: any): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.patch(ENDPOINTS.ADMIN.UPDATE_USER(userId), data);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async cancelSubscription(): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post<ApiResponse<any>>(ENDPOINTS.BILLING.CANCEL_SUBSCRIPTION);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async cancelSubscriptionImmediately(): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post<ApiResponse<any>>(ENDPOINTS.BILLING.CANCEL_SUBSCRIPTION_IMMEDIATELY);
       return response;
     } catch (error) {
       throw error;
@@ -1040,6 +1125,148 @@ async getUserDashboard(): Promise<ApiResponse<any>> {
 
     // Return cleanup function
     return () => {
+      abortController.abort();
+    };
+  }
+
+  /**
+   * Get current subscription details
+   */
+  async getSubscriptionDetails(): Promise<ApiResponse<SubscriptionDetails>> {
+    try {
+      const response = await api.get<ApiResponse<SubscriptionDetails>>(ENDPOINTS.BILLING.SUBSCRIPTION_DETAILS);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get invoices history
+   */
+  async getInvoices(): Promise<ApiResponse<InvoicesResponse>> {
+    try {
+      const response = await api.get<ApiResponse<InvoicesResponse>>(ENDPOINTS.BILLING.INVOICES);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Stream LinkedIn URL extraction for profiles
+   */
+  async getLinkedInUrlsStream(
+    payload: { profileIds: string[] },
+    onStreamData: (data: any) => void,
+    onError: (error: any) => void,
+    onComplete: () => void
+  ): Promise<() => void> {
+    let abortController = new AbortController();
+    let retryCount = 0;
+    const maxRetries = 3;
+    let buffer = '';
+
+    const attemptStream = async (): Promise<void> => {
+      try {
+        const token = await this.getToken();
+        
+        const response = await fetch(`${API_BASE_URL}/profile/get-linkedin-urls-stream`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+          },
+          body: JSON.stringify(payload),
+          signal: abortController.signal,
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+
+        if (!reader) {
+          throw new Error('Response body is not readable');
+        }
+
+        const readStream = async () => {
+          try {
+            while (true) {
+              const { done, value } = await reader.read();
+              
+              if (done) {
+                // Process any remaining buffer
+                if (buffer.trim()) {
+                  processBuffer();
+                }
+                onComplete();
+                break;
+              }
+
+              const chunk = decoder.decode(value, { stream: true });
+              buffer += chunk;
+              
+              // Process complete lines from buffer
+              processBuffer();
+            }
+          } catch (streamError) {
+            if (streamError.name === 'AbortError') {
+              console.log('LinkedIn URL stream aborted by user');
+              return;
+            }
+            throw streamError;
+          }
+        };
+
+        const processBuffer = () => {
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || ''; // Keep the last incomplete line
+
+          for (const line of lines) {
+            if (line.trim() && line.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                onStreamData(data);
+              } catch (parseError) {
+                console.error('Error parsing LinkedIn URL stream data:', parseError, 'Line:', line);
+              }
+            }
+          }
+        };
+
+        await readStream();
+
+      } catch (error: any) {
+        if (error.name === 'AbortError') {
+          console.log('LinkedIn URL stream request aborted');
+          return;
+        }
+
+        console.error(`LinkedIn URL stream attempt ${retryCount + 1} failed:`, error);
+        
+        if (retryCount < maxRetries && !abortController.signal.aborted) {
+          retryCount++;
+          console.log(`Retrying LinkedIn URL stream (${retryCount}/${maxRetries})...`);
+          await new Promise(resolve => setTimeout(resolve, 1000 * retryCount));
+          return attemptStream();
+        } else {
+          onError(error);
+        }
+      }
+    };
+
+    // Start the stream
+    attemptStream();
+
+    // Return cleanup function
+    return () => {
+      console.log('Aborting LinkedIn URL stream...');
       abortController.abort();
     };
   }

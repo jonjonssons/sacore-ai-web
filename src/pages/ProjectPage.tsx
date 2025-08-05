@@ -970,7 +970,7 @@ export default function ProjectPage() {
             window.dispatchEvent(projectDeletedEvent);
 
             toast.success("Project successfully deleted");
-            navigate("/leads");
+            navigate("/");
         } catch (error) {
             console.error("Failed to delete project:", error);
             toast.error("Failed to delete project. Please try again.");

@@ -249,6 +249,21 @@ const RequirementsProfileComponent: React.FC<RequirementsProfileProps> = ({
 
   const isChipBased = (category: string) => ['Title', 'Industry'].includes(category);
 
+  // Add validation function to check if all required fields are present
+  const areAllRequiredFieldsValid = () => {
+    const locationReq = requirements.find(r => r.category === 'Location');
+    const titleReq = requirements.find(r => r.category === 'Title');
+
+    // Check location - must be present and have a non-empty string value
+    const hasValidLocation = locationReq && typeof locationReq.value === 'string' && locationReq.value.trim().length > 0;
+
+    // Check title - must be present and have at least one non-empty value in array
+    const hasValidTitle = titleReq && Array.isArray(titleReq.value) && titleReq.value.some(title => title.trim().length > 0);
+
+    // Industry is now optional - users can process profiles without specifying industry
+    return hasValidLocation && hasValidTitle;
+  };
+
   const handleProcessProfiles = async () => {
     setIsSearching(true);
     setProgress(0);
@@ -606,7 +621,7 @@ const RequirementsProfileComponent: React.FC<RequirementsProfileProps> = ({
             <Button
               className={`text-white text-sm px-6 py-2.5 rounded-md shadow-sm transition-colors flex items-center gap-2 ${isDarkMode ? 'bg-gray-600 hover:bg-gray-700' : 'bg-gray-900 hover:bg-black'}`}
               onClick={handleProcessProfiles}
-              disabled={isLoading || isSearching || requirements.length === 0}
+              disabled={isLoading || isSearching || !areAllRequiredFieldsValid()}
             >
               {isSearching ? (
                 <>
