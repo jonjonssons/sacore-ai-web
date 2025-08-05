@@ -340,7 +340,60 @@ const UserDetailsPage: React.FC = () => {
                     </div>
                 </CardContent>
             </Card>
+            {/* Stripe Subscription Details */}
+            {userData.stripeSubscription && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Stripe Subscription Details</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid md:grid-cols-2 gap-4">
+                            <div><strong>Subscription ID:</strong> {userData.stripeSubscription.id}</div>
+                            <div>
+                                <strong>Status:</strong>{' '}
+                                <Badge variant={userData.stripeSubscription.status === 'active' ? 'default' : 'secondary'}>
+                                    {userData.stripeSubscription.status}
+                                </Badge>
+                            </div>
+                            <div><strong>Customer ID:</strong> {userData.stripeSubscription.customer}</div>
+                            <div><strong>Currency:</strong> {userData.stripeSubscription.currency.toUpperCase()}</div>
+                            <div><strong>Collection Method:</strong> {userData.stripeSubscription.collection_method}</div>
+                            <div><strong>Cancel at Period End:</strong> {userData.stripeSubscription.cancel_at_period_end ? 'Yes' : 'No'}</div>
 
+                            {/* Plan Details */}
+                            {userData.stripeSubscription.plan && (
+                                <>
+                                    <div><strong>Plan Name:</strong> {userData.stripeSubscription.plan.nickname || 'N/A'}</div>
+                                    <div><strong>Plan Amount:</strong> ${(userData.stripeSubscription.plan.amount / 100).toFixed(2)}</div>
+                                    <div><strong>Billing Interval:</strong> {userData.stripeSubscription.plan.interval}</div>
+                                    <div><strong>Plan ID:</strong> {userData.stripeSubscription.plan.id}</div>
+                                </>
+                            )}
+
+                            {/* Billing Cycle */}
+                            <div><strong>Subscription Created:</strong> {formatDate(new Date(userData.stripeSubscription.created * 1000).toISOString())}</div>
+
+                            {/* Current period from subscription items */}
+                            {userData.stripeSubscription.items?.data?.[0] && (
+                                <>
+                                    <div><strong>Current Period Start:</strong> {formatDate(new Date(userData.stripeSubscription.items.data[0].current_period_start * 1000).toISOString())}</div>
+                                    <div><strong>Current Period End:</strong> {formatDate(new Date(userData.stripeSubscription.items.data[0].current_period_end * 1000).toISOString())}</div>
+                                </>
+                            )}
+
+                            {/* Payment Method */}
+                            {userData.stripeSubscription.default_payment_method && (
+                                <div><strong>Default Payment Method:</strong> {userData.stripeSubscription.default_payment_method}</div>
+                            )}
+
+                            {/* Latest Invoice */}
+                            {userData.stripeSubscription.latest_invoice && (
+                                <div><strong>Latest Invoice:</strong> {userData.stripeSubscription.latest_invoice}</div>
+                            )}
+                        </div>
+                    </CardContent>
+                </Card>
+            )}
             <Card>
                 <CardHeader>
                     <CardTitle>Credit Usage by Operation</CardTitle>
