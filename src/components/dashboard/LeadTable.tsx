@@ -1905,6 +1905,22 @@ export function LeadTable({
               }));
               break;
 
+            case 'fallback_status':
+              // Handle fallback status - just update progress message, keep analyzing state
+              setStreamingProgress(prev => ({
+                ...prev,
+                message: data.message || 'Trying fallback enrichment...'
+              }));
+              break;
+
+            case 'fallback_success':
+              // Handle fallback success - update progress message, keep analyzing state  
+              setStreamingProgress(prev => ({
+                ...prev,
+                message: data.message || 'Fallback successful, analyzing...'
+              }));
+              break;
+
             case 'result': {
               const identifier = data.identifier;
               if (!identifier) {
