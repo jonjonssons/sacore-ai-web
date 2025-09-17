@@ -7,10 +7,11 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from "@/components/ui/use-toast";
 import authService from '@/services/authService';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Plus, Search } from 'lucide-react';
+import { ArrowLeft, Plus, Search, Settings } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import api, { API_BASE_URL } from '@/services/api';
 
 const UserDetailsPage: React.FC = () => {
@@ -27,6 +28,10 @@ const UserDetailsPage: React.FC = () => {
     const [dailySearchesToAdd, setDailySearchesToAdd] = useState<number>(5);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [isSubmittingSearches, setIsSubmittingSearches] = useState(false);
+    const [isChangePlanDialogOpen, setIsChangePlanDialogOpen] = useState(false);
+    const [selectedPlan, setSelectedPlan] = useState<string>('');
+    const [selectedBillingInterval, setSelectedBillingInterval] = useState<string>('');
+    const [isSubmittingPlanChange, setIsSubmittingPlanChange] = useState(false);
 
     useEffect(() => {
         const fetchUserDetails = async () => {
@@ -271,6 +276,86 @@ const UserDetailsPage: React.FC = () => {
         }
     };
 
+    const handleChangePlan = async () => {
+        if (!userId) return;
+
+        try {
+            setIsSubmittingPlanChange(true);
+
+            // Get token for authorization
+            const token = await authService.getToken();
+            if (!token) {
+                throw new Error('No authentication token available');
+            }
+
+            // Call the specific plan change API endpoint
+            const response = await fetch(`${API_BASE_URL}/admin/users/${userId}/plan`, {
+                method: 'PATCH',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    plan: selectedPlan,
+                    billingInterval: selectedBillingInterval
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok) {
+                const { changes, user: updatedUser } = data;
+                
+                // Create detailed success message
+                let changeDetails = [];
+                if (changes.plan.from !== changes.plan.to) {
+                    changeDetails.push(`Plan: ${changes.plan.from} → ${changes.plan.to}`);
+                }
+                if (changes.billingInterval.from !== changes.billingInterval.to) {
+                    changeDetails.push(`Billing: ${changes.billingInterval.from} → ${changes.billingInterval.to}`);
+                }
+                if (changes.credits.adjustment !== 0) {
+                    changeDetails.push(`Credits: ${changes.credits.from} → ${changes.credits.to} (${changes.credits.adjustment > 0 ? '+' : ''}${changes.credits.adjustment})`);
+                }
+
+                toast({
+                    title: "Plan Changed Successfully",
+                    description: changeDetails.length > 0 ? changeDetails.join(', ') : 'Plan updated successfully',
+                    variant: "default"
+                });
+
+                // Update local state with the returned user data
+                setUserData(prev => ({
+                    ...prev,
+                    user: {
+                        ...prev.user,
+                        subscription: updatedUser.subscription,
+                        billingInterval: updatedUser.billingInterval,
+                        credits: updatedUser.credits
+                    }
+                }));
+
+                // Close the dialog
+                setIsChangePlanDialogOpen(false);
+
+                // Refresh user details to get updated data
+                const refreshedUserData = await authService.getUserDetails(userId);
+                setUserData(refreshedUserData);
+            } else {
+                throw new Error(data.message || 'Failed to change plan');
+            }
+        } catch (error: any) {
+            console.error('Error changing plan:', error);
+            toast({
+                title: "Error",
+                description: `Failed to change plan: ${error.message || 'Unknown error'}`,
+                variant: "destructive"
+            });
+        } finally {
+            setIsSubmittingPlanChange(false);
+        }
+    };
+
     if (loading) return <p>Loading user details...</p>;
     if (!userData) return <p>No user data found.</p>;
 
@@ -305,6 +390,12 @@ const UserDetailsPage: React.FC = () => {
                         variant="default"
                     >
                         <Plus className="mr-2 h-4 w-4" /> Add Credits
+                    </Button>
+                    <Button
+                        onClick={() => setIsChangePlanDialogOpen(true)}
+                        variant="default"
+                    >
+                        <Settings className="mr-2 h-4 w-4" /> Change Plan
                     </Button>
                 </div>
             </div>
@@ -601,6 +692,80 @@ const UserDetailsPage: React.FC = () => {
                                 </>
                             ) : (
                                 'Reduce Used Searches'
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Change Plan Dialog */}
+            <Dialog open={isChangePlanDialogOpen} onOpenChange={setIsChangePlanDialogOpen}>
+                <DialogContent className="sm:max-w-[425px]">
+                    <DialogHeader>
+                        <DialogTitle>Change User Plan</DialogTitle>
+                    </DialogHeader>
+                    <div className="py-4">
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="plan">Select Plan</Label>
+                                <Select
+                                    value={selectedPlan}
+                                    onValueChange={setSelectedPlan}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a plan" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="free">Free</SelectItem>
+                                        <SelectItem value="basic">Basic</SelectItem>
+                                        <SelectItem value="explorer">Explorer</SelectItem>
+                                        <SelectItem value="pro">Pro</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="billingInterval">Select Billing Interval</Label>
+                                <Select
+                                    value={selectedBillingInterval}
+                                    onValueChange={setSelectedBillingInterval}
+                                >
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select billing interval" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="monthly">Monthly</SelectItem>
+                                        <SelectItem value="yearly">Yearly</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="space-y-1">
+                                <p className="text-sm text-gray-500">
+                                    Current plan: <span className="font-semibold">{user.subscription}</span>
+                                </p>
+                                <p className="text-sm text-gray-500">
+                                    Current billing: <span className="font-semibold">{user.billingInterval || 'N/A'}</span>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsChangePlanDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleChangePlan}
+                            disabled={isSubmittingPlanChange || !selectedPlan || !selectedBillingInterval}
+                            variant="default"
+                        >
+                            {isSubmittingPlanChange ? (
+                                <>
+                                    <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-b-transparent"></div>
+                                    Processing...
+                                </>
+                            ) : (
+                                'Change Plan'
                             )}
                         </Button>
                     </DialogFooter>
