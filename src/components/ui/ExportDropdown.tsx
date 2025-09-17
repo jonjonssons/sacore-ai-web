@@ -28,13 +28,15 @@ interface ExportDropdownProps {
   selectedProfiles: string[];
   fileName: string;
   className?: string;
+  size?: 'default' | 'sm';
 }
 
 export const ExportDropdown: React.FC<ExportDropdownProps> = ({
   profiles,
   selectedProfiles,
   fileName,
-  className = ""
+  className = "",
+  size = "default"
 }) => {
   const [isExporting, setIsExporting] = useState(false);
 
@@ -197,14 +199,18 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button 
-          variant="outline" 
-          className={`flex gap-2 text-sm font-medium ${className}`}
+        <Button
+          variant="outline"
+          size={size}
+          className={`flex items-center gap-1 ${size === 'sm'
+              ? 'text-xs h-8 px-3'
+              : 'text-sm font-medium gap-2'
+            } ${className}`}
           disabled={isExporting || profiles.length === 0}
         >
-          <Download className="h-4 w-4" />
+          <Download className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
           Export ({profileCount})
-          <ChevronDown className="h-4 w-4" />
+          <ChevronDown className={size === 'sm' ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">

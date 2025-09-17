@@ -4,6 +4,7 @@ import type { InternalAxiosRequestConfig } from 'axios';
 import { toast } from '@/hooks/use-toast';
 
 // API configuration
+// export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3333/api';
 export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://sacore-ai-api-twhc.onrender.com/api';
 // export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://devsacoreapi.56-north.com/api';
 
