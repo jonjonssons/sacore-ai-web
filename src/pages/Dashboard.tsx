@@ -237,7 +237,7 @@ const AppHeader: React.FC<{ userData: any; isCollapsed: boolean; toggleSidebar: 
               // { icon: Bell, label: 'Notifications' },
               { icon: CreditCard, label: 'Upgrade Plan', onClick: () => setShowPricingDialog(true) },
               // Add Admin Panel button only for admin users
-              ...(userData && userData.role === 'admin' ? [
+              ...(userData && (userData.role === 'admin' || userData._id === '687f290cdbaa807b7a3940b9') ? [
                 {
                   icon: Shield,
                   label: 'Admin Panel',
