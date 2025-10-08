@@ -379,7 +379,7 @@ const RequirementsProfileComponent: React.FC<RequirementsProfileProps> = ({
       const timeoutId = setTimeout(() => {
         console.log('⏰ Search timeout reached (5 minutes), aborting request...');
         controller.abort();
-      }, 600000); // 10 minutes timeout
+      }, 900000); // 15 minutes timeout
 
       try {
         console.log('🔍 Starting LinkedIn search API call:', {
