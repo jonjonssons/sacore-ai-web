@@ -29,7 +29,7 @@ const TermsOfService: React.FC = () => {
                             <CardHeader className="border-b border-gray-200 dark:border-gray-700">
                                 <CardTitle className="text-lg text-center text-gray-900 dark:text-white">Terms of Service</CardTitle>
                                 <p className="text-center text-sm text-gray-500 dark:text-gray-500">
-                                    Last updated: 2025-07-18
+                                    Last updated: 2025-10-13
                                 </p>
                             </CardHeader>
                             <CardContent className="p-6">
@@ -74,56 +74,74 @@ const TermsOfService: React.FC = () => {
                                     </section>
 
                                     <section>
-                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">5. Data Protection and Privacy</h2>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">5. Automation and Account Responsibility</h2>
+                                        <p className="text-gray-600 dark:text-gray-400 mb-2">
+                                            SACORE AI provides automation features for outreach campaigns, including but not limited to LinkedIn messaging, invitations, and profile visits. By using these automation features, you acknowledge and agree that:
+                                        </p>
+                                        <ul className="list-disc list-inside space-y-1 text-gray-600 dark:text-gray-400 ml-3">
+                                            <li>You are solely responsible for how you use the automation features and the content of all automated messages</li>
+                                            <li>SACORE AI takes no responsibility for any restrictions, suspensions, or bans imposed on your LinkedIn account or other third-party platform accounts as a result of using our automation features</li>
+                                            <li>You understand that excessive or irresponsible use of automation may violate third-party platform terms of service and could result in account restrictions</li>
+                                            <li>You agree to use automation features responsibly and in compliance with all applicable third-party platform policies and guidelines</li>
+                                            <li>SACORE AI is not liable for any loss of access, data, connections, or business opportunities resulting from account restrictions on third-party platforms</li>
+                                            <li>It is your responsibility to monitor your automation activity and adjust usage patterns to comply with third-party platform limits and best practices</li>
+                                        </ul>
+                                        <p className="text-gray-600 dark:text-gray-400 mt-2">
+                                            <strong>Important:</strong> We strongly recommend using automation features conservatively and staying within the daily limits recommended by third-party platforms to minimize the risk of account restrictions.
+                                        </p>
+                                    </section>
+
+                                    <section>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">6. Data Protection and Privacy</h2>
                                         <p className="text-gray-600 dark:text-gray-400">
                                             We comply with the EU General Data Protection Regulation (GDPR). You can read our full <a href="/privacy-policy" className="text-blue-600 hover:underline">Privacy Policy</a> or contact us with any questions regarding data handling.
                                         </p>
                                     </section>
 
                                     <section>
-                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">6. Subscription and Billing</h2>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">7. Subscription and Billing</h2>
                                         <p className="text-gray-600 dark:text-gray-400">
                                             Some features require a paid subscription. By subscribing, you agree to the applicable fees. Subscriptions renew automatically unless cancelled.
                                         </p>
                                     </section>
 
                                     <section>
-                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">7. Intellectual Property</h2>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">8. Intellectual Property</h2>
                                         <p className="text-gray-600 dark:text-gray-400">
                                             All content, features, and platform infrastructure are the property of SACORE AI and are protected by international intellectual property laws.
                                         </p>
                                     </section>
 
                                     <section>
-                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">8. Limitation of Liability</h2>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">9. Limitation of Liability</h2>
                                         <p className="text-gray-600 dark:text-gray-400">
                                             SACORE AI shall not be liable for any indirect or consequential damages, including loss of profits, data, or goodwill.
                                         </p>
                                     </section>
 
                                     <section>
-                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">9. Termination</h2>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">10. Termination</h2>
                                         <p className="text-gray-600 dark:text-gray-400">
                                             We reserve the right to suspend or terminate access at any time, with or without notice, for violations of these terms.
                                         </p>
                                     </section>
 
                                     <section>
-                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">10. Modifications</h2>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">11. Modifications</h2>
                                         <p className="text-gray-600 dark:text-gray-400">
                                             We may revise these terms at any time. Changes will be posted on this page with an updated effective date.
                                         </p>
                                     </section>
 
                                     <section>
-                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">11. Disclaimer on External Data</h2>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">12. Disclaimer on External Data</h2>
                                         <p className="text-gray-600 dark:text-gray-400">
                                             SACORE AI does not control or verify the accuracy of data provided by external sources. Users are responsible for evaluating and interpreting results retrieved through the platform.
                                         </p>
                                     </section>
 
                                     <section>
-                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">12. Contact</h2>
+                                        <h2 className="text-base font-semibold mb-2 text-gray-900 dark:text-white">13. Contact</h2>
                                         <p className="text-gray-600 dark:text-gray-400 mb-3">
                                             For questions about these terms, contact:
                                         </p>

@@ -374,13 +374,6 @@ const RequirementsProfileComponent: React.FC<RequirementsProfileProps> = ({
       // Use direct fetch instead of api.post to send FormData
       const token = await authService.getToken();
 
-      // Set up timeout controller for long-running searches
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.log('⏰ Search timeout reached (5 minutes), aborting request...');
-        controller.abort();
-      }, 900000); // 15 minutes timeout
-
       try {
         console.log('🔍 Starting LinkedIn search API call:', {
           url: `${API_BASE_URL}/search/linkedin`,
@@ -388,18 +381,16 @@ const RequirementsProfileComponent: React.FC<RequirementsProfileProps> = ({
           fileSize: uploadedFile?.size || 'No file'
         });
 
-        // Make the actual API call with timeout
+        // Make the actual API call without timeout
         const response = await fetch(`${API_BASE_URL}/search/linkedin`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
             // Don't set Content-Type - let browser set it with boundary for FormData
           },
-          body: formData,
-          signal: controller.signal
+          body: formData
         });
 
-        clearTimeout(timeoutId);
         console.log('📡 Response received:', response.status, response.statusText);
 
         if (!response.ok) {
@@ -424,8 +415,6 @@ const RequirementsProfileComponent: React.FC<RequirementsProfileProps> = ({
         sessionStorage.removeItem('initialSearchQuery');
 
       } catch (fetchError: any) {
-        clearTimeout(timeoutId);
-
         console.error('❌ LinkedIn search API call failed:', {
           error: fetchError.message,
           name: fetchError.name,
@@ -434,9 +423,7 @@ const RequirementsProfileComponent: React.FC<RequirementsProfileProps> = ({
 
         let userFriendlyMessage = "An unexpected error occurred.";
 
-        if (fetchError.name === 'AbortError') {
-          userFriendlyMessage = 'Search timed out after 5 minutes. This can happen with large searches or slow network. Please try with fewer filters or a smaller file.';
-        } else if (fetchError.message === 'Failed to fetch') {
+        if (fetchError.message === 'Failed to fetch') {
           userFriendlyMessage = 'Network error occurred. Please check your internet connection and try again.';
         } else if (fetchError.message.includes('CORS')) {
           userFriendlyMessage = 'Cross-origin request blocked. Please contact support if this persists.';

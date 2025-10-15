@@ -4,12 +4,19 @@ import {
     CreditCard,
     Receipt,
     User,
-    Shield,
+    Settings,
     Bell,
     Download,
     ChevronRight,
     AlertTriangle,
-    Check
+    Check,
+    Clock,
+    MessageCircle,
+    UserPlus,
+    Plus,
+    Minus,
+    Info,
+    Shield
 } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -17,6 +24,10 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useTheme } from '@/contexts/ThemeContext';
 import authService from '@/services/authService';
 import { useAuth } from '@/hooks/useAuth';
@@ -33,43 +44,273 @@ import {
 } from "@/components/ui/alert-dialog";
 import { toast } from 'sonner';
 
+// LinkedIn rate limits validation constants
+const LINKEDIN_LIMITS = {
+    invitations: {
+        hourly: { min: 5, max: 15, default: 10 },
+        daily: { min: 10, max: 20, default: 20 },
+        weekly: { min: 50, max: 80, default: 80 }
+    },
+    messages: {
+        hourly: { min: 10, max: 30, default: 20 },
+        daily: { min: 30, max: 80, default: 50 },
+        weekly: { min: 100, max: 300, default: 200 }
+    },
+    visits: {
+        hourly: { min: 20, max: 50, default: 30 },
+        daily: { min: 50, max: 150, default: 100 },
+        weekly: { min: 200, max: 500, default: 400 }
+    },
+    checks: {
+        hourly: { min: 30, max: 100, default: 50 },
+        daily: { min: 100, max: 300, default: 200 },
+        weekly: { min: 500, max: 1000, default: 800 }
+    }
+};
+
 const SettingsPage: React.FC = () => {
     const { isDarkMode } = useTheme();
     const { user } = useAuth();
     const [activeTab, setActiveTab] = useState('subscriptions');
-    const [subscriptionData, setSubscriptionData] = useState<any>(null);
-    const [invoices, setInvoices] = useState<any[]>([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [showPricingDialog, setShowPricingDialog] = useState(false);
     const [isCancelDialogOpen, setIsCancelDialogOpen] = useState(false);
     const [isCancelling, setIsCancelling] = useState(false);
 
-    const fetchSubscriptionData = async () => {
-        setIsLoading(true);
-        setError(null);
+    // Subscriptions tab state
+    const [subscriptionData, setSubscriptionData] = useState<any>(null);
+    const [isSubscriptionLoading, setIsSubscriptionLoading] = useState(false);
+    const [subscriptionError, setSubscriptionError] = useState<string | null>(null);
+
+    // Invoices tab state
+    const [invoices, setInvoices] = useState<any[]>([]);
+    const [isInvoicesLoading, setIsInvoicesLoading] = useState(false);
+    const [invoicesError, setInvoicesError] = useState<string | null>(null);
+
+
+
+    // Rate limits state
+    const [rateLimits, setRateLimits] = useState<any>(null);
+    const [isRateLimitsLoading, setIsRateLimitsLoading] = useState(false);
+    const [rateLimitsError, setRateLimitsError] = useState<string | null>(null);
+
+    // Editable rate limits state
+    const [editableLimits, setEditableLimits] = useState<any>(null);
+    const [isSavingLimits, setIsSavingLimits] = useState(false);
+
+    // Fetch subscription data
+    const fetchSubscriptionData = async (forceRefresh = false) => {
+        if (subscriptionData && !forceRefresh) return; // Don't fetch if already loaded unless forcing refresh
+
+        setIsSubscriptionLoading(true);
+        setSubscriptionError(null);
         try {
-            // Fetch subscription data
             const subscriptionResponse = await authService.getSubscriptionDetails();
             if (subscriptionResponse) {
                 setSubscriptionData(subscriptionResponse);
             }
+        } catch (err) {
+            console.error('Error fetching subscription data:', err);
+            setSubscriptionError('Failed to load subscription data. Please try again later.');
+        } finally {
+            setIsSubscriptionLoading(false);
+        }
+    };
 
-            // Fetch invoices
+    // Fetch invoices data
+    const fetchInvoicesData = async () => {
+        if (invoices.length > 0) return; // Don't fetch if already loaded
+
+        setIsInvoicesLoading(true);
+        setInvoicesError(null);
+        try {
             const invoicesResponse = await authService.getInvoices();
             if (invoicesResponse && invoicesResponse.invoices) {
                 setInvoices(invoicesResponse.invoices || []);
             }
         } catch (err) {
-            console.error('Error fetching settings data:', err);
-            setError('Failed to load settings data. Please try again later.');
+            console.error('Error fetching invoices data:', err);
+            setInvoicesError('Failed to load invoices data. Please try again later.');
         } finally {
-            setIsLoading(false);
+            setIsInvoicesLoading(false);
         }
     };
 
+
+
+    // Fetch LinkedIn rate limits data
+    const fetchRateLimits = async () => {
+        if (rateLimits) return; // Don't fetch if already loaded
+
+        setIsRateLimitsLoading(true);
+        setRateLimitsError(null);
+        try {
+            console.log('Fetching LinkedIn rate limits...');
+            const rateLimitsResponse = await authService.getLinkedInRateLimits();
+            console.log('Rate limits response:', rateLimitsResponse);
+            if (rateLimitsResponse && rateLimitsResponse.rateLimits) {
+                console.log('Setting rate limits:', rateLimitsResponse.rateLimits);
+                setRateLimits(rateLimitsResponse.rateLimits);
+                // Initialize editable limits with current values
+                setEditableLimits({
+                    invitations: { daily: rateLimitsResponse.rateLimits.invitations?.daily || LINKEDIN_LIMITS.invitations.daily.default },
+                    messages: { daily: rateLimitsResponse.rateLimits.messages?.daily || LINKEDIN_LIMITS.messages.daily.default },
+                    visits: { daily: rateLimitsResponse.rateLimits.visits?.daily || LINKEDIN_LIMITS.visits.daily.default }
+                });
+            } else {
+                console.log('No rate limits data received');
+                setRateLimitsError('No rate limits data available');
+            }
+        } catch (err) {
+            console.error('Error fetching rate limits:', err);
+            setRateLimitsError('Failed to load rate limits. Please try again later.');
+        } finally {
+            setIsRateLimitsLoading(false);
+        }
+    };
+
+    // Handle rate limit changes with validation
+    const updateRateLimit = (category: string, type: string, value: number) => {
+        const limits = LINKEDIN_LIMITS[category as keyof typeof LINKEDIN_LIMITS];
+        const typeLimit = limits[type as keyof typeof limits];
+
+        // Enforce min/max boundaries
+        const clampedValue = Math.max(typeLimit.min, Math.min(typeLimit.max, value));
+
+        setEditableLimits((prev: any) => ({
+            ...prev,
+            [category]: {
+                ...prev[category],
+                [type]: clampedValue
+            }
+        }));
+    };
+
+    const increaseLimit = (category: string, type: string) => {
+        const currentValue = editableLimits?.[category]?.[type] || 0;
+        const limits = LINKEDIN_LIMITS[category as keyof typeof LINKEDIN_LIMITS];
+        const typeLimit = limits[type as keyof typeof limits];
+
+        // Only increase if not at max
+        if (currentValue < typeLimit.max) {
+            updateRateLimit(category, type, currentValue + 1);
+        }
+    };
+
+    const decreaseLimit = (category: string, type: string) => {
+        const currentValue = editableLimits?.[category]?.[type] || 0;
+        const limits = LINKEDIN_LIMITS[category as keyof typeof LINKEDIN_LIMITS];
+        const typeLimit = limits[type as keyof typeof limits];
+
+        // Only decrease if not at min
+        if (currentValue > typeLimit.min) {
+            updateRateLimit(category, type, currentValue - 1);
+        }
+    };
+
+    // Helper functions for button states
+    const isAtMinLimit = (category: string, type: string) => {
+        const currentValue = editableLimits?.[category]?.[type] || 0;
+        const limits = LINKEDIN_LIMITS[category as keyof typeof LINKEDIN_LIMITS];
+        const typeLimit = limits[type as keyof typeof limits];
+        return currentValue <= typeLimit.min;
+    };
+
+    const isAtMaxLimit = (category: string, type: string) => {
+        const currentValue = editableLimits?.[category]?.[type] || 0;
+        const limits = LINKEDIN_LIMITS[category as keyof typeof LINKEDIN_LIMITS];
+        const typeLimit = limits[type as keyof typeof limits];
+        return currentValue >= typeLimit.max;
+    };
+
+    const getMaxLimit = (category: string, type: string) => {
+        const limits = LINKEDIN_LIMITS[category as keyof typeof LINKEDIN_LIMITS];
+        const typeLimit = limits[type as keyof typeof limits];
+        return typeLimit.max;
+    };
+
+    const saveLimits = async () => {
+        if (!editableLimits) return;
+
+        setIsSavingLimits(true);
+        try {
+            console.log('Saving limits:', editableLimits);
+
+            // Prepare the payload in the format expected by the API
+            // We'll only update the daily values, keeping existing hourly and weekly values
+            const currentRateLimits = rateLimits || {};
+            const rateLimitsPayload = {
+                invitations: {
+                    hourly: currentRateLimits.invitations?.hourly || LINKEDIN_LIMITS.invitations.hourly.default,
+                    daily: editableLimits.invitations?.daily || LINKEDIN_LIMITS.invitations.daily.default,
+                    weekly: currentRateLimits.invitations?.weekly || LINKEDIN_LIMITS.invitations.weekly.default
+                },
+                messages: {
+                    hourly: currentRateLimits.messages?.hourly || LINKEDIN_LIMITS.messages.hourly.default,
+                    daily: editableLimits.messages?.daily || LINKEDIN_LIMITS.messages.daily.default,
+                    weekly: currentRateLimits.messages?.weekly || LINKEDIN_LIMITS.messages.weekly.default
+                },
+                visits: {
+                    hourly: currentRateLimits.visits?.hourly || LINKEDIN_LIMITS.visits.hourly.default,
+                    daily: editableLimits.visits?.daily || LINKEDIN_LIMITS.visits.daily.default,
+                    weekly: currentRateLimits.visits?.weekly || LINKEDIN_LIMITS.visits.weekly.default
+                },
+                checks: {
+                    hourly: currentRateLimits.checks?.hourly || LINKEDIN_LIMITS.checks.hourly.default,
+                    daily: currentRateLimits.checks?.daily || LINKEDIN_LIMITS.checks.daily.default,
+                    weekly: currentRateLimits.checks?.weekly || LINKEDIN_LIMITS.checks.weekly.default
+                }
+            };
+
+            const response = await authService.updateLinkedInRateLimits(rateLimitsPayload);
+
+            if (response && response.success) {
+                console.log('Rate limits updated successfully:', response);
+
+                // Update local state with the response data
+                if (response.rateLimits && response.rateLimits) {
+                    setRateLimits(response.rateLimits);
+                    // Also update editable limits to reflect any server-side changes
+                    setEditableLimits({
+                        invitations: { daily: response.rateLimits.invitations?.daily || LINKEDIN_LIMITS.invitations.daily.default },
+                        messages: { daily: response.rateLimits.messages?.daily || LINKEDIN_LIMITS.messages.daily.default },
+                        visits: { daily: response.rateLimits.visits?.daily || LINKEDIN_LIMITS.visits.daily.default }
+                    });
+                }
+
+                toast.success(response.message || 'Rate limits updated successfully');
+            } else {
+                throw new Error(response?.message || 'Failed to update rate limits');
+            }
+        } catch (err: any) {
+            console.error('Error saving limits:', err);
+            const errorMessage = err.message || 'Failed to save rate limits. Please try again.';
+            toast.error(errorMessage);
+        } finally {
+            setIsSavingLimits(false);
+        }
+    };
+
+    // Handle tab change and fetch data accordingly
+    const handleTabChange = (newTab: string) => {
+        setActiveTab(newTab);
+
+        switch (newTab) {
+            case 'subscriptions':
+                fetchSubscriptionData();
+                break;
+            case 'invoices':
+                fetchInvoicesData();
+                break;
+            case 'campaigns':
+                fetchRateLimits(); // Fetch rate limits for display
+                break;
+            // account and notifications tabs don't need API calls
+        }
+    };
+
+    // Load initial tab data
     useEffect(() => {
-        fetchSubscriptionData();
+        handleTabChange(activeTab);
     }, []);
 
     const handleCancelSubscription = async (immediately: boolean) => {
@@ -83,9 +324,10 @@ const SettingsPage: React.FC = () => {
 
             if (response && response.message) {
                 toast.success(response.message);
-                fetchSubscriptionData(); // Refresh data
+                // Force refresh subscription data
+                fetchSubscriptionData(true);
             } else {
-                const errorMessage = response?.error || 'Failed to process cancellation.';
+                const errorMessage = response?.message || 'Failed to process cancellation.';
                 throw new Error(errorMessage);
             }
         } catch (err: any) {
@@ -97,6 +339,8 @@ const SettingsPage: React.FC = () => {
             setIsCancelDialogOpen(false);
         }
     };
+
+
 
 
     // Format date function
@@ -134,10 +378,10 @@ const SettingsPage: React.FC = () => {
 
                 <Tabs
                     defaultValue={activeTab}
-                    onValueChange={setActiveTab}
+                    onValueChange={handleTabChange}
                     className="w-full"
                 >
-                    <TabsList className={`grid grid-cols-5 mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                    <TabsList className={`grid grid-cols-4 mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                         <TabsTrigger value="account" className="text-sm">
                             <User className="h-4 w-4 mr-2" />
                             Account
@@ -154,10 +398,10 @@ const SettingsPage: React.FC = () => {
                             <Bell className="h-4 w-4 mr-2" />
                             Notifications
                         </TabsTrigger>
-                        <TabsTrigger value="security" className="text-sm">
-                            <Shield className="h-4 w-4 mr-2" />
-                            Security
-                        </TabsTrigger>
+                        {/* <TabsTrigger value="campaigns" className="text-sm">
+                            <Settings className="h-4 w-4 mr-2" />
+                            Campaign Settings
+                        </TabsTrigger> */}
                     </TabsList>
 
                     {/* Account Tab Content */}
@@ -185,17 +429,17 @@ const SettingsPage: React.FC = () => {
 
                     {/* Subscriptions Tab Content */}
                     <TabsContent value="subscriptions" className="space-y-6">
-                        {isLoading ? (
+                        {isSubscriptionLoading ? (
                             <div className={`flex justify-center items-center py-12 ${isDarkMode ? 'text-white' : 'text-black'}`}>
                                 <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div>
                                 <span className="ml-3">Loading subscription data...</span>
                             </div>
-                        ) : error ? (
+                        ) : subscriptionError ? (
                             <Card className={isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white'}>
                                 <CardContent className="flex flex-col items-center justify-center py-8">
                                     <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-                                    <p className={`text-center ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>{error}</p>
-                                    <Button onClick={() => window.location.reload()} className="mt-4">
+                                    <p className={`text-center ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>{subscriptionError}</p>
+                                    <Button onClick={() => fetchSubscriptionData()} className="mt-4">
                                         Try Again
                                     </Button>
                                 </CardContent>
@@ -393,17 +637,17 @@ const SettingsPage: React.FC = () => {
 
                     {/* Invoices Tab Content */}
                     <TabsContent value="invoices" className="space-y-6">
-                        {isLoading ? (
+                        {isInvoicesLoading ? (
                             <div className={`flex justify-center items-center py-12 ${isDarkMode ? 'text-white' : 'text-black'}`}>
                                 <div className={`animate-spin rounded-full h-8 w-8 border-b-2 ${isDarkMode ? 'border-white' : 'border-black'}`}></div>
                                 <span className="ml-3">Loading invoice data...</span>
                             </div>
-                        ) : error ? (
+                        ) : invoicesError ? (
                             <Card className={isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white'}>
                                 <CardContent className="flex flex-col items-center justify-center py-8">
                                     <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-                                    <p className={`text-center ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>{error}</p>
-                                    <Button onClick={() => window.location.reload()} className="mt-4">
+                                    <p className={`text-center ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>{invoicesError}</p>
+                                    <Button onClick={() => fetchInvoicesData()} className="mt-4">
                                         Try Again
                                     </Button>
                                 </CardContent>
@@ -496,26 +740,236 @@ const SettingsPage: React.FC = () => {
                         </Card>
                     </TabsContent>
 
-                    {/* Security Tab Content */}
-                    <TabsContent value="security" className="space-y-6">
+                    {/* Campaign Settings Tab Content */}
+                    <TabsContent value="campaigns" className="space-y-6">
+                        {/* LinkedIn Rate Limits */}
                         <Card className={isDarkMode ? 'bg-gray-900 border-gray-700' : 'bg-white'}>
                             <CardHeader>
-                                <CardTitle className={isDarkMode ? 'text-white' : ''}>Security Settings</CardTitle>
+                                <CardTitle className={`flex items-center ${isDarkMode ? 'text-white' : ''}`}>
+                                    <UserPlus className="h-5 w-5 mr-2" />
+                                    Limits for LinkedIn Steps
+                                </CardTitle>
                                 <CardDescription className={isDarkMode ? 'text-gray-400' : ''}>
-                                    Manage your account security
+                                    Set maximum daily limits for LinkedIn actions to stay within safe boundaries
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
-                                <p className={isDarkMode ? 'text-gray-300' : 'text-gray-600'}>
-                                    Security settings are managed in the Profile page. Please visit your profile to update your password and security preferences.
-                                </p>
+                                {isRateLimitsLoading ? (
+                                    <div className="flex items-center justify-center py-8">
+                                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                                        <span className={`ml-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-600'}`}>
+                                            Loading rate limits...
+                                        </span>
+                                    </div>
+                                ) : rateLimitsError ? (
+                                    <div className={`text-center py-8 ${isDarkMode ? 'text-red-400' : 'text-red-600'}`}>
+                                        <p>{rateLimitsError}</p>
+                                    </div>
+                                ) : editableLimits ? (
+                                    <div className="space-y-6">
+                                        {/* Safety Recommendation Banner */}
+                                        <div className={`p-4 rounded-lg border ${isDarkMode ? 'bg-blue-900/20 border-blue-800' : 'bg-blue-50 border-blue-200'}`}>
+                                            <div className="flex items-start gap-3">
+                                                <Shield className={`h-5 w-5 mt-0.5 flex-shrink-0 ${isDarkMode ? 'text-blue-400' : 'text-blue-600'}`} />
+                                                <div className="flex-1">
+                                                    <h4 className={`font-semibold text-sm mb-1 ${isDarkMode ? 'text-blue-300' : 'text-blue-900'}`}>
+                                                        Safety First: Start Conservative
+                                                    </h4>
+                                                    <p className={`text-sm ${isDarkMode ? 'text-blue-200' : 'text-blue-800'}`}>
+                                                        We <span className="font-medium">strongly recommend starting with lower limits</span> (minimum values) to protect your LinkedIn account.
+                                                        Aggressive automation can trigger LinkedIn's security systems and lead to account restrictions.
+                                                    </p>
+                                                    <div className={`mt-2 text-xs ${isDarkMode ? 'text-blue-300' : 'text-blue-700'}`}>
+                                                        <p className="font-medium">💡 Best Practice:</p>
+                                                        <ul className="list-disc list-inside ml-2 mt-1 space-y-0.5">
+                                                            <li>Start with minimum limits for the first 2-4 weeks</li>
+                                                            <li>Gradually increase by 1-2 actions per day if no issues occur</li>
+                                                            <li>Monitor your LinkedIn account health regularly</li>
+                                                        </ul>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {/* LinkedIn Invites */}
+                                        <div className={`flex items-center justify-between p-4 rounded-lg border ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        Maximum number of LinkedIn invites sent by Sacore in 24h
+                                                    </h4>
+                                                    {editableLimits.invitations?.daily <= 15 && (
+                                                        <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 text-xs">
+                                                            <Check className="h-3 w-3 mr-1" />
+                                                            Recommended
+                                                        </Badge>
+                                                    )}
+                                                    {editableLimits.invitations?.daily > 17 && (
+                                                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20 text-xs">
+                                                            <AlertTriangle className="h-3 w-3 mr-1" />
+                                                            Higher Risk
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                    Range: {LINKEDIN_LIMITS.invitations.daily.min} - {LINKEDIN_LIMITS.invitations.daily.max}
+                                                    <span className={`ml-2 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>• Recommended: 15</span>
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center space-x-3">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0"
+                                                    onClick={() => decreaseLimit('invitations', 'daily')}
+                                                    disabled={isSavingLimits || isAtMinLimit('invitations', 'daily')}
+                                                >
+                                                    <Minus className="h-4 w-4" />
+                                                </Button>
+                                                <div className="flex flex-col items-center">
+                                                    <span className={`min-w-[3rem] text-center font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {editableLimits.invitations?.daily || 0}
+                                                    </span>
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0"
+                                                    onClick={() => increaseLimit('invitations', 'daily')}
+                                                    disabled={isSavingLimits || isAtMaxLimit('invitations', 'daily')}
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* LinkedIn Messages */}
+                                        <div className={`flex items-center justify-between p-4 rounded-lg border ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        Maximum number of LinkedIn messages sent by Sacore in 24h
+                                                    </h4>
+                                                    {editableLimits.messages?.daily <= 50 && (
+                                                        <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 text-xs">
+                                                            <Check className="h-3 w-3 mr-1" />
+                                                            Recommended
+                                                        </Badge>
+                                                    )}
+                                                    {editableLimits.messages?.daily > 60 && (
+                                                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20 text-xs">
+                                                            <AlertTriangle className="h-3 w-3 mr-1" />
+                                                            Higher Risk
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                    Range: {LINKEDIN_LIMITS.messages.daily.min} - {LINKEDIN_LIMITS.messages.daily.max}
+                                                    <span className={`ml-2 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>• Recommended: 50</span>
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center space-x-3">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0"
+                                                    onClick={() => decreaseLimit('messages', 'daily')}
+                                                    disabled={isSavingLimits || isAtMinLimit('messages', 'daily')}
+                                                >
+                                                    <Minus className="h-4 w-4" />
+                                                </Button>
+                                                <div className="flex flex-col items-center">
+                                                    <span className={`min-w-[3rem] text-center font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {editableLimits.messages?.daily || 0}
+                                                    </span>
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0"
+                                                    onClick={() => increaseLimit('messages', 'daily')}
+                                                    disabled={isSavingLimits || isAtMaxLimit('messages', 'daily')}
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* LinkedIn Visits */}
+                                        <div className={`flex items-center justify-between p-4 rounded-lg border ${isDarkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-50 border-gray-200'}`}>
+                                            <div className="flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <h4 className={`font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        Maximum number of LinkedIn visits made by Sacore in 24h
+                                                    </h4>
+                                                    {editableLimits.visits?.daily <= 70 && (
+                                                        <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20 text-xs">
+                                                            <Check className="h-3 w-3 mr-1" />
+                                                            Recommended
+                                                        </Badge>
+                                                    )}
+                                                    {editableLimits.visits?.daily > 90 && (
+                                                        <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-500/20 text-xs">
+                                                            <AlertTriangle className="h-3 w-3 mr-1" />
+                                                            Higher Risk
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <p className={`text-sm mt-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                                    Range: {LINKEDIN_LIMITS.visits.daily.min} - {LINKEDIN_LIMITS.visits.daily.max}
+                                                    <span className={`ml-2 ${isDarkMode ? 'text-green-400' : 'text-green-600'}`}>• Recommended: 70</span>
+                                                </p>
+                                            </div>
+                                            <div className="flex items-center space-x-3">
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0"
+                                                    onClick={() => decreaseLimit('visits', 'daily')}
+                                                    disabled={isSavingLimits || isAtMinLimit('visits', 'daily')}
+                                                >
+                                                    <Minus className="h-4 w-4" />
+                                                </Button>
+                                                <div className="flex flex-col items-center">
+                                                    <span className={`min-w-[3rem] text-center font-medium ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
+                                                        {editableLimits.visits?.daily || 0}
+                                                    </span>
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 w-8 p-0"
+                                                    onClick={() => increaseLimit('visits', 'daily')}
+                                                    disabled={isSavingLimits || isAtMaxLimit('visits', 'daily')}
+                                                >
+                                                    <Plus className="h-4 w-4" />
+                                                </Button>
+                                            </div>
+                                        </div>
+
+                                        {/* Save Button */}
+                                        <div className="flex justify-end pt-4">
+                                            <Button
+                                                onClick={saveLimits}
+                                                disabled={isSavingLimits}
+                                                className="min-w-[120px]"
+                                            >
+                                                {isSavingLimits ? (
+                                                    <>
+                                                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                                        Saving...
+                                                    </>
+                                                ) : (
+                                                    'Save Changes'
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className={`text-center py-8 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+                                        <p>No rate limits data available</p>
+                                    </div>
+                                )}
                             </CardContent>
-                            <CardFooter>
-                                <Button onClick={() => window.location.href = '/profile'}>
-                                    Go to Profile
-                                    <ChevronRight className="ml-2 h-4 w-4" />
-                                </Button>
-                            </CardFooter>
                         </Card>
                     </TabsContent>
                 </Tabs>

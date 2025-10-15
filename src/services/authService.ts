@@ -173,6 +173,8 @@ export const ENDPOINTS = {
     SAVE: '/saved-profiles',
     SAVING_PROFILE: '/profiles',
     UPDATE_PROFILE: (profileId: string) => `/profiles/${profileId}`,
+    DELETE_PROFILE: (profileId: string) => `/profiles/${profileId}`,
+    DELETE_PROFILES: '/profiles',
     SAVE_BATCH: '/saved-profiles',
     GET_ALL_SAVED_PROFILES: '/saved-profiles',
     GET_PROFILES_FOR_THE_PROJECT: (projectId: string) => `/profiles/project/${projectId}`,
@@ -189,7 +191,37 @@ export const ENDPOINTS = {
     DELETE_PROJECT: (projectId: string) => `/projects/${projectId}`
   },
   SEARCH: {
-    IMPORT_CSV: '/search/import-csv'
+    IMPORT_CSV: '/search/import-csv',
+    RECENT_SEARCHES: '/search-results/recent',
+    SEARCH_RESULTS: (searchId: string) => `/search-results/${searchId}/profiles`,
+    BATCH_UPDATE: '/search-results/batch-update',
+    DELETE_SEARCH_PROFILES: '/search-results/profiles'
+  },
+  CAMPAIGNS: {
+    LIST: '/campaigns', // GET
+    GET: (id: string) => `/campaigns/${id}`, // GET by ID
+    UPDATE: (id: string) => `/campaigns/${id}`,
+    PAUSED_UPDATE: (id: string) => `/campaigns/${id}/paused-update`,
+    DELETE: (id: string) => `/campaigns/${id}`,
+    START: (id: string) => `/campaigns/${id}/start`,
+    PAUSE: (id: string) => `/campaigns/${id}/pause`,
+    RESUME: (id: string) => `/campaigns/${id}/resume`,
+    DUPLICATE: (id: string) => `/campaigns/${id}/duplicate`,
+    SETTINGS: (id: string) => `/campaigns/${id}/settings`,
+    PRESETS: '/campaigns/settings/presets',
+    APPLY_PRESET: (id: string, preset: string) => `/campaigns/${id}/settings/preset/${preset}`,
+    EXECUTIONS: (id: string) => `/campaigns/${id}/executions`,
+    ACTIVITY: (id: string) => `/campaigns/${id}/activity`,
+    SCHEDULED: (id: string) => `/campaigns/${id}/scheduled`,
+    STATS: (id: string) => `/campaigns/${id}/stats`,
+    EXECUTION_DETAIL: (id: string, prospectId: string) => `/campaigns/${id}/executions/${prospectId}`,
+    PROSPECT_DETAIL: (campaignId: string, prospectId: string) => `/campaigns/${campaignId}/prospects/${prospectId}`,
+  },
+  ACCOUNTS: {
+    LIST: '/accounts',
+    GMAIL_AUTH_URL: '/accounts/gmail/auth-url',
+    GMAIL_CALLBACK: '/accounts/gmail/callback',
+    LINKEDIN_RATE_LIMITS: '/accounts/linkedin/rate-limits',
   },
   BILLING: {
     SUBSCRIPTION_DETAILS: '/stripe/subscription',
@@ -197,6 +229,20 @@ export const ENDPOINTS = {
     CANCEL_SUBSCRIPTION_IMMEDIATELY: '/stripe/subscription/cancel-immediately',
     INVOICES: '/stripe/invoices',
   },
+  SETTINGS: {
+    LINKEDIN_DELAYS: '/settings/linkedin-delays',
+    LINKEDIN_PRESETS: '/settings/linkedin-delays/presets',
+    LINKEDIN_PRESET_APPLY: (preset: string) => `/settings/linkedin-delays/preset/${preset}`,
+    TIMEZONES: '/settings/timezones',
+  },
+  TASKS: {
+    LIST: '/tasks', // GET all tasks, POST new task
+    DETAIL: (id: string) => `/tasks/${id}`, // GET, PUT, DELETE specific task
+    COMPLETE: (id: string) => `/tasks/${id}/complete`, // PATCH to complete task
+    BULK_DELETE: '/tasks/bulk', // DELETE multiple tasks
+    BULK_COMPLETE: '/tasks/bulk/complete', // PATCH to complete multiple tasks
+    CAMPAIGN: '/tasks/campaign', // POST to create campaign task
+  }
 };
 
 // Add new interfaces for subscription and invoice data
@@ -230,6 +276,176 @@ interface InvoicesResponse {
   invoices: Invoice[];
 }
 
+interface CreateTaskData {
+  title: string;
+  description?: string;
+  priority: 'low' | 'medium' | 'high';
+  dueDate?: string;
+  type?: 'manual' | 'campaign';
+}
+
+interface UpdateTaskData {
+  title?: string;
+  description?: string;
+  priority?: 'low' | 'medium' | 'high';
+  status?: 'pending' | 'in-progress' | 'completed';
+  dueDate?: string;
+}
+
+interface Task {
+  _id: string;
+  title: string;
+  description?: string;
+  priority: 'low' | 'medium' | 'high';
+  dueDate?: string;
+  type: 'manual' | 'campaign';
+  status: 'pending' | 'in-progress' | 'completed';
+  userId: string;
+  createdBy: {
+    _id: string;
+    email: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+  __v: number;
+  completedAt?: string;
+  campaign?: string;
+  campaignId?: string;
+  projectId?: string;
+}
+
+interface TaskFilters {
+  status?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  type?: 'manual' | 'campaign';
+  priority?: 'low' | 'medium' | 'high';
+  campaign?: string;
+  dueDate?: string;
+  overdue?: string;
+  campaignId?: string;
+  projectId?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: 'createdAt' | 'updatedAt' | 'dueDate' | 'priority' | 'title' | 'status';
+  sortOrder?: 'asc' | 'desc';
+}
+
+interface BulkTaskAction {
+  taskIds: string[];
+  updates: {
+    status: 'pending' | 'in-progress' | 'completed';
+    priority?: 'low' | 'medium' | 'high';
+  };
+}
+
+interface CreateCampaignTaskData {
+  campaignId: string;
+  taskType: 'EMAIL_EXTRACTION' | 'LINKEDIN_URL_EXTRACTION' | 'PROFILE_ENRICHMENT';
+  payload: any; // Specific payload based on taskType
+}
+
+interface DelaySettings {
+  invitations: {
+    minDelay: number;
+    maxDelay: number;
+    unit: string;
+  };
+  messages: {
+    minDelay: number;
+    maxDelay: number;
+    unit: string;
+  };
+}
+
+interface WorkingHours {
+  enabled: boolean;
+  start: number;
+  end: number;
+  timezone: string;
+  weekendsEnabled: boolean;
+}
+
+interface LinkedInDelaySettings {
+  delaySettings: DelaySettings;
+  workingHours: WorkingHours;
+  safetyPreset: string;
+}
+
+interface TimezoneOption {
+  value: string;
+  label: string;
+  offset: string;
+}
+
+interface TimezoneRegions {
+  [region: string]: string[];
+}
+
+interface TimezoneData {
+  popular: TimezoneOption[];
+  regions: TimezoneRegions;
+}
+
+interface PresetDelaySettings {
+  invitations: {
+    minDelay: number;
+    maxDelay: number;
+    unit: string;
+  };
+  messages: {
+    minDelay: number;
+    maxDelay: number;
+    unit: string;
+  };
+}
+
+interface PresetWorkingHours {
+  enabled: boolean;
+  start: number;
+  end: number;
+  timezone: string;
+  weekendsEnabled: boolean;
+}
+
+interface SafetyPreset {
+  name: string;
+  description: string;
+  icon: string;
+  delaySettings: PresetDelaySettings;
+  workingHours: PresetWorkingHours;
+}
+
+interface SafetyPresetsData {
+  [key: string]: SafetyPreset;
+}
+
+interface LinkedInRateLimits {
+  invitations: {
+    hourly: number;
+    daily: number;
+    weekly: number;
+  };
+  messages: {
+    hourly: number;
+    daily: number;
+    weekly: number;
+  };
+  visits: {
+    hourly: number;
+    daily: number;
+    weekly: number;
+  };
+  checks: {
+    hourly: number;
+    daily: number;
+    weekly: number;
+  };
+}
+
+interface LinkedInRateLimitsResponse {
+  success: boolean;
+  rateLimits: LinkedInRateLimits;
+}
+
 class AuthService {
   /**
    * Login user with email and password
@@ -240,26 +456,29 @@ class AuthService {
       
       console.log('Raw API response:', response); // Debug log
       
-      // Handle different response structures
-      // Case 1: Data is nested in response.data (common with axios)
-      const responseData = response.data || response;
-      
-      console.log('Response data:', responseData); // Debug log
+      // Handle different response structures and normalize
+      const rd: any = (response as any).data || response;
+      console.log('Response data:', rd); // Debug log
       
       // Store auth tokens in localStorage
-      if (responseData.accessToken) {
-        localStorage.setItem('auth_token', responseData.accessToken);
-        localStorage.setItem('refresh_token', responseData.refreshToken);
+      if (rd.accessToken) {
+        localStorage.setItem('auth_token', rd.accessToken);
+        localStorage.setItem('refresh_token', rd.refreshToken);
         
         // Store complete user data including hasSeenOnboardingVideo flag
         const userData = {
-          ...responseData.user,
-          hasSeenOnboardingVideo: responseData.user?.hasSeenOnboardingVideo ?? false
+          ...(rd.user || {}),
+          hasSeenOnboardingVideo: rd.user?.hasSeenOnboardingVideo ?? false
         };
         localStorage.setItem('user', JSON.stringify(userData));
         
-        // Return the actual data
-        return responseData;
+        // Return the normalized data
+        const ret: AuthResponseData = {
+          user: userData as any,
+          accessToken: rd.accessToken,
+          refreshToken: rd.refreshToken,
+        };
+        return ret;
       } else {
         throw new Error('No access token received from server');
       }
@@ -686,11 +905,36 @@ async getUserDashboard(): Promise<ApiResponse<any>> {
     }
   }
 
-  async updateProfile(profileId: string, payload: any[]): Promise<ApiResponse<any>> {
+  async updateProfile(profileId: string, payload: any): Promise<ApiResponse<any>> {
     try {
       const response = await api.put<ApiResponse<any>>(
         ENDPOINTS.SAVED_PROFILES.UPDATE_PROFILE(profileId), 
         payload
+      );
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async deleteProfile(profileId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.delete<ApiResponse<any>>(
+        ENDPOINTS.SAVED_PROFILES.DELETE_PROFILE(profileId)
+      );
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  async deleteProfiles(profileIds: string[]): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.delete<ApiResponse<any>>(
+        ENDPOINTS.SAVED_PROFILES.DELETE_PROFILES,
+        {
+          data: { profileIds }
+        }
       );
       return response;
     } catch (error) {
@@ -802,6 +1046,327 @@ async getUserDashboard(): Promise<ApiResponse<any>> {
   }
 
   /**
+   * Create a campaign
+   */
+  async createCampaign(payload: {
+    name: string;
+    description?: string;
+    prospects: Array<{ name: string; email: string; company: string; position: string; linkedin?: string; phone?: string }>;
+    sequence: any[];
+  }): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.LIST}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify(payload)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  /**
+   * Get all campaigns for current user
+   */
+  async getCampaigns(): Promise<any[]> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.LIST}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    // Expecting array
+    return Array.isArray(data) ? data : (Array.isArray(data?.campaigns) ? data.campaigns : []);
+  }
+
+  /**
+   * Get campaign by ID
+   */
+  async getCampaignById(id: string): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.GET(id)}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  async updateCampaign(id: string, body: any): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.UPDATE(id)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  async updatePausedCampaign(id: string, body: any): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.PAUSED_UPDATE(id)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify(body)
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  async startCampaign(id: string): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.START(id)}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  async pauseCampaign(id: string): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.PAUSE(id)}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  async resumeCampaign(id: string): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.RESUME(id)}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  async deleteCampaign(id: string): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}/campaigns/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return response.status === 204 ? {} : await response.json();
+  }
+
+  /**
+   * Get detailed prospect information
+   */
+  async getProspectDetail(campaignId: string, prospectId: string): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.PROSPECT_DETAIL(campaignId, prospectId)}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  async duplicateCampaign(id: string): Promise<any> {
+    const token = this.getToken();
+    const response = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.DUPLICATE(id)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data?.message || data?.error || `HTTP ${response.status}: ${response.statusText}`);
+    }
+    return data;
+  }
+
+  async getCampaignExecutions(id: string): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.EXECUTIONS(id)}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to fetch executions');
+    return data;
+  }
+  async getCampaignActivity(id: string): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.ACTIVITY(id)}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to fetch activity');
+    return data;
+  }
+  async getCampaignScheduled(id: string): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.SCHEDULED(id)}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to fetch scheduled');
+    return data;
+  }
+  async getCampaignStats(id: string): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.STATS(id)}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to fetch stats');
+    return data;
+  }
+  async getCampaignExecutionDetail(id: string, prospectId: string): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.EXECUTION_DETAIL(id, prospectId)}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to fetch execution detail');
+    return data;
+  }
+
+  async getCampaignSettings(id: string): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.SETTINGS(id)}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to fetch campaign settings');
+    return data;
+  }
+
+  async getCampaignPresets(): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.PRESETS}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to fetch campaign presets');
+    return data;
+  }
+
+  async applyCampaignPreset(campaignId: string, presetKey: string): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.APPLY_PRESET(campaignId, presetKey)}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to apply campaign preset');
+    return data;
+  }
+
+  async updateCampaignSettings(campaignId: string, settings: any): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.CAMPAIGNS.SETTINGS(campaignId)}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': token ? `Bearer ${token}` : ''
+      },
+      body: JSON.stringify(settings)
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to update campaign settings');
+    return data;
+  }
+
+  async getAccounts(): Promise<any[]> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.ACCOUNTS.LIST}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to fetch accounts');
+    return data;
+  }
+
+  async getGmailAuthUrl(): Promise<string> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.ACCOUNTS.GMAIL_AUTH_URL}`, { headers: { 'Authorization': token ? `Bearer ${token}` : '' } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to get Gmail auth URL');
+    return data?.authUrl || data?.url;
+  }
+  async completeGmailCallback(code: string): Promise<any> {
+    const token = this.getToken();
+    const res = await fetch(`${API_BASE_URL}${ENDPOINTS.ACCOUNTS.GMAIL_CALLBACK}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': token ? `Bearer ${token}` : '',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ code })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data?.message || data?.error || 'Failed to complete Gmail OAuth');
+    return data;
+  }
+
+  // Get Recent Searches for past 24 hours
+  async getRecentSearches(): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.get<ApiResponse<any>>(ENDPOINTS.SEARCH.RECENT_SEARCHES);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Get Search Results with Profiles for a specific search
+  async getSearchResults(searchId: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.get<ApiResponse<any>>(ENDPOINTS.SEARCH.SEARCH_RESULTS(searchId));
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
    * Import CSV file with filters
    */
   async importCSV(file: File, filters: {field: string, value: string}[]): Promise<ApiResponse<any>> {
@@ -869,7 +1434,40 @@ async getUserDashboard(): Promise<ApiResponse<any>> {
         });
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          // Try to parse the error response body
+          let errorData;
+          try {
+            const errorBody = await response.text();
+            console.log('HTTP Error Response Body:', errorBody);
+            
+            try {
+              errorData = JSON.parse(errorBody);
+              console.log('Parsed Error Data:', errorData);
+            } catch (jsonError) {
+              console.log('Failed to parse JSON, using text as is:', jsonError);
+              // If JSON parsing fails, use the text as is
+              errorData = { message: errorBody };
+            }
+          } catch (readError) {
+            console.error('Error reading response body:', readError);
+            // If we can't read the response, use a default error
+            errorData = { message: `HTTP ${response.status} error` };
+          }
+          
+          // Create an error object with the parsed response data
+          const httpError = new Error(`HTTP error! status: ${response.status}`);
+          (httpError as any).response = errorData;
+          (httpError as any).status = response.status;
+          (httpError as any).details = errorData.details;
+          (httpError as any).error = errorData.error;
+          
+          console.log('Throwing HTTP error with details:', {
+            message: httpError.message,
+            details: (httpError as any).details,
+            response: (httpError as any).response
+          });
+          
+          throw httpError;
         }
 
         const reader = response.body?.getReader();
@@ -1270,6 +1868,364 @@ async getUserDashboard(): Promise<ApiResponse<any>> {
       abortController.abort();
     };
   }
+
+  /**
+   * Batch update search result profiles
+   */
+  async batchUpdateSearchProfiles(updates: Array<{ profileId: string; [key: string]: any }>): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.patch<ApiResponse<any>>(ENDPOINTS.SEARCH.BATCH_UPDATE, { updates });
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete search result profiles
+   */
+  async deleteSearchProfiles(profileIds: string[]): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.delete<ApiResponse<any>>(
+        ENDPOINTS.SEARCH.DELETE_SEARCH_PROFILES,
+        {
+          data: { profileIds }
+        }
+      );
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // ======================== TASK METHODS ========================
+
+  /**
+   * Create a new task
+   */
+  async createTask(taskData: CreateTaskData): Promise<Task> {
+    try {
+      const response = await api.post<{ message: string; task: Task }>(ENDPOINTS.TASKS.LIST, taskData);
+      return response.task; // Extract the task from the response
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get all tasks with optional filters
+   */
+  async getTasks(filters?: TaskFilters): Promise<{ tasks: Task[]; pagination: any; filters: any }> {
+    try {
+      const params = new URLSearchParams();
+      
+      if (filters?.status) params.append('status', filters.status);
+      if (filters?.type) params.append('type', filters.type);
+      if (filters?.priority) params.append('priority', filters.priority);
+      if (filters?.campaign) params.append('campaign', filters.campaign);
+      if (filters?.dueDate) params.append('dueDate', filters.dueDate);
+      if (filters?.overdue) params.append('overdue', filters.overdue);
+      if (filters?.campaignId) params.append('campaignId', filters.campaignId);
+      if (filters?.projectId) params.append('projectId', filters.projectId);
+      if (filters?.page) params.append('page', filters.page.toString());
+      if (filters?.limit) params.append('limit', filters.limit.toString());
+      if (filters?.sortBy) params.append('sortBy', filters.sortBy);
+      if (filters?.sortOrder) params.append('sortOrder', filters.sortOrder);
+
+      const queryString = params.toString();
+      const url = queryString ? `${ENDPOINTS.TASKS.LIST}?${queryString}` : ENDPOINTS.TASKS.LIST;
+      
+      const response = await api.get<{ tasks: Task[]; pagination: any; filters: any }>(url);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get a specific task by ID
+   */
+  async getTask(taskId: string): Promise<Task> {
+    try {
+      const response = await api.get<{ task: Task }>(ENDPOINTS.TASKS.DETAIL(taskId));
+      return response.task; // Extract the task from the response
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Update a task
+   */
+  async updateTask(taskId: string, taskData: UpdateTaskData): Promise<Task> {
+    try {
+      const response = await api.patch<{ message: string; task: Task } | Task>(ENDPOINTS.TASKS.DETAIL(taskId), taskData);
+      // Handle different response structures
+      if ('task' in response) {
+        return response.task;
+      } else {
+        return response;
+      }
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete a task
+   */
+  async deleteTask(taskId: string): Promise<ApiResponse<{ message: string }>> {
+    try {
+      const response = await api.delete<ApiResponse<{ message: string }>>(ENDPOINTS.TASKS.DETAIL(taskId));
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Complete a task
+   */
+  async completeTask(taskId: string, notes?: string): Promise<ApiResponse<{ completedTask: Task; nextTasks?: Task[] }>> {
+    try {
+      const response = await api.patch<ApiResponse<{ completedTask: Task; nextTasks?: Task[] }>>(
+        ENDPOINTS.TASKS.COMPLETE(taskId), 
+        { notes }
+      );
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete multiple tasks
+   */
+  async bulkDeleteTasks(taskIds: string[]): Promise<ApiResponse<{ message: string; deletedCount: number }>> {
+    try {
+      const response = await api.delete<ApiResponse<{ message: string; deletedCount: number }>>(
+        ENDPOINTS.TASKS.BULK_DELETE, 
+        { 
+          data: { taskIds } // Axios supports request body in DELETE requests via the data property
+        }
+      );
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Complete multiple tasks
+   */
+  async bulkCompleteTasks(bulkAction: BulkTaskAction): Promise<{ message: string; completedCount: number; modifiedCount?: number }> {
+    try {
+      const response = await api.patch<{ message: string; completedCount: number; modifiedCount?: number }>(
+        ENDPOINTS.TASKS.BULK_DELETE, // This is actually /tasks/bulk endpoint for bulk operations
+        bulkAction
+      );
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Create a campaign task
+   */
+  async createCampaignTask(campaignTaskData: CreateCampaignTaskData): Promise<ApiResponse<Task>> {
+    try {
+      const response = await api.post<ApiResponse<Task>>(ENDPOINTS.TASKS.CAMPAIGN, campaignTaskData);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // ======================== SETTINGS METHODS ========================
+
+  /**
+   * Get LinkedIn delay settings
+   */
+  async getLinkedInDelaySettings(): Promise<ApiResponse<LinkedInDelaySettings>> {
+    try {
+      const response = await api.get<ApiResponse<LinkedInDelaySettings>>(ENDPOINTS.SETTINGS.LINKEDIN_DELAYS);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Update LinkedIn delay settings
+   */
+  async updateLinkedInDelaySettings(settings: Partial<LinkedInDelaySettings>): Promise<ApiResponse<LinkedInDelaySettings>> {
+    try {
+      const response = await api.put<ApiResponse<LinkedInDelaySettings>>(ENDPOINTS.SETTINGS.LINKEDIN_DELAYS, settings);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get available timezones
+   */
+  async getTimezones(): Promise<ApiResponse<TimezoneData>> {
+    try {
+      const response = await api.get<ApiResponse<TimezoneData>>(ENDPOINTS.SETTINGS.TIMEZONES);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get LinkedIn delay presets
+   */
+  async getLinkedInPresets(): Promise<ApiResponse<SafetyPresetsData>> {
+    try {
+      const response = await api.get<ApiResponse<SafetyPresetsData>>(ENDPOINTS.SETTINGS.LINKEDIN_PRESETS);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Apply LinkedIn preset settings
+   */
+  async applyLinkedInPreset(presetKey: string): Promise<ApiResponse<any>> {
+    try {
+      const response = await api.post<ApiResponse<any>>(ENDPOINTS.SETTINGS.LINKEDIN_PRESET_APPLY(presetKey), {});
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Get LinkedIn rate limits
+   */
+  async getLinkedInRateLimits(): Promise<ApiResponse<LinkedInRateLimitsResponse>> {
+    try {
+      const response = await api.get<ApiResponse<LinkedInRateLimitsResponse>>(ENDPOINTS.ACCOUNTS.LINKEDIN_RATE_LIMITS);
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Update LinkedIn rate limits
+   */
+  async updateLinkedInRateLimits(rateLimits: Partial<LinkedInRateLimits>): Promise<ApiResponse<LinkedInRateLimitsResponse>> {
+    try {
+      const response = await api.put<ApiResponse<LinkedInRateLimitsResponse>>(
+        ENDPOINTS.ACCOUNTS.LINKEDIN_RATE_LIMITS, 
+        { rateLimits }
+      );
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Add prospects to an existing campaign
+   */
+  async addProspectsToCampaign(campaignId: string, prospects: Array<{
+    name: string;
+    email?: string;
+    linkedin?: string;
+    company?: string;
+    position?: string;
+    phone?: string;
+  }>): Promise<ApiResponse<{
+    prospectsAdded: number;
+    totalProspects: number;
+    originalProspectCount: number;
+    executionsCreated: number;
+    campaignStatus: string;
+    autoStarted: boolean;
+    newProspects: Array<{
+      name: string;
+      email?: string;
+      linkedin?: string;
+      status: string;
+    }>;
+  }>> {
+    const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}/prospects`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.getToken()}`,
+      },
+      body: JSON.stringify({ prospects }),
+    });
+
+    if (!response.ok) {
+      let errorMessage = `HTTP error! status: ${response.status}`;
+      try {
+        const errorData = await response.json();
+        if (errorData.error) {
+          errorMessage = errorData.error;
+        } else if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch (parseError) {
+        // If we can't parse the error response, use the default message
+      }
+      throw new Error(errorMessage);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Delete prospects from an existing campaign
+   */
+  async deleteProspectsFromCampaign(campaignId: string, prospectIds: string[]): Promise<ApiResponse<{
+    prospectsDeleted: number;
+    originalProspectCount: number;
+    remainingProspects: number;
+    cleanup: {
+      executionsDeleted: number;
+      emailLogsDeleted: number;
+      tasksDeleted: number;
+      invitationJobsCancelled: number;
+      messageJobsCancelled: number;
+      errors: any[];
+    };
+    statistics: {
+      before: { totalProspects: number; emailsSent: number };
+      after: { totalProspects: number; emailsSent: number };
+      changes: { totalProspects: number; emailsSent: number };
+    };
+    performance: {
+      operationDurationMs: number;
+      transactionUsed: boolean;
+      optimizationsApplied: string[];
+    };
+    deletedProspects: any[];
+    timestamp: string;
+  }>> {
+    const response = await fetch(`${API_BASE_URL}/campaigns/${campaignId}/prospects`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.getToken()}`,
+      },
+      body: JSON.stringify({ prospectIds }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    return await response.json();
+  }
+
 }
 
 export const authService = new AuthService();

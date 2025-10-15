@@ -15,8 +15,8 @@ const pricingPlans = [
   {
     name: 'Basic',
     description: 'Perfect for individuals getting started with outreach',
-    monthlyPrice: 69,
-    annualPrice: 51,
+    monthlyPrice: 99,
+    annualPrice: 75,
     monthlyFeatures: [
       '500 Credits per month',
       '10 searches per month',
@@ -113,43 +113,41 @@ const PricingSection: React.FC = () => {
 
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {pricingPlans.map((plan, index) => (
-            <Card 
-              key={index} 
-              className={`border rounded-none overflow-hidden transition-all duration-300 ${
-                plan.popular 
-                  ? 'shadow-xl relative border-black transform md:-translate-y-4' 
-                  : 'shadow-sm hover:shadow-md'
-              }`}
+            <Card
+              key={index}
+              className={`border rounded-none overflow-hidden transition-all duration-300 ${plan.popular
+                ? 'shadow-xl relative border-black transform md:-translate-y-4'
+                : 'shadow-sm hover:shadow-md'
+                }`}
             >
               {plan.popular && (
                 <div className="absolute top-0 right-0 bg-black text-white text-xs font-bold py-1 px-3">
                   Popular
                 </div>
               )}
-              
+
               <div className="p-8">
                 <h3 className="text-xl font-bold mb-2 text-black">{plan.name}</h3>
                 <p className="text-gray-600 text-sm mb-6 h-12">{plan.description}</p>
-                
+
                 <div className="mb-6">
                   <div className="text-4xl font-bold text-black">
                     ${annual ? plan.annualPrice : plan.monthlyPrice}
                   </div>
                   <div className="text-gray-500 text-sm">per user / month</div>
                 </div>
-                
+
                 <Link to={plan.ctaLink}>
-                  <Button 
-                    className={`w-full mb-8 rounded-none ${
-                      plan.popular 
-                        ? 'bg-black hover:bg-gray-900 text-white' 
-                        : 'bg-white hover:bg-gray-50 text-black border border-black'
-                    }`}
+                  <Button
+                    className={`w-full mb-8 rounded-none ${plan.popular
+                      ? 'bg-black hover:bg-gray-900 text-white'
+                      : 'bg-white hover:bg-gray-50 text-black border border-black'
+                      }`}
                   >
                     {plan.cta}
                   </Button>
                 </Link>
-                
+
                 <div className="space-y-4">
                   {(annual ? plan.annualFeatures : plan.monthlyFeatures).map((feature, idx) => (
                     <div key={idx} className="flex items-start">

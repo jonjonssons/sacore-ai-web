@@ -17,13 +17,14 @@ const pricingPlans = [
     {
         name: 'Basic',
         description: 'Perfect for individuals getting started with outreach',
-        monthlyPrice: 69,
-        annualPrice: 51,
+        monthlyPrice: 99,
+        annualPrice: 75,
         monthlyFeatures: [
             '500 Credits per month',
             '10 searches per month',
             '5 searches per day',
             '5 Projects at the same time',
+            '5 Active Campaigns',
             'Credits rollover (max 1 month extra)'
         ],
         annualFeatures: [
@@ -31,7 +32,8 @@ const pricingPlans = [
             '10 searches per month',
             '5 searches per day',
             '5 Projects at the same time',
-            'Credits rollover (max 1 month extra)'
+            '5 Active Campaigns',
+            'Credits rollover'
         ],
         cta: 'Choose Plan',
         popular: false,
@@ -47,6 +49,7 @@ const pricingPlans = [
             '25 searches per month',
             '7 searches per day',
             'Unlimited projects',
+            'Unlimited Active Campaigns',
             'Credits rollover (max 1 month extra)'
         ],
         annualFeatures: [
@@ -54,7 +57,8 @@ const pricingPlans = [
             '25 searches per month',
             '7 searches per day',
             'Unlimited projects',
-            'Credits rollover (max 1 month extra)'
+            'Unlimited Active Campaigns',
+            'Credits rollover'
         ],
         cta: 'Choose Plan',
         popular: true,
@@ -70,6 +74,7 @@ const pricingPlans = [
             '50 searches per month',
             '10 searches per day',
             'Unlimited projects',
+            'Unlimited Active Campaigns',
             'Credits rollover (max 1 month extra)'
         ],
         annualFeatures: [
@@ -77,7 +82,8 @@ const pricingPlans = [
             '50 searches per month',
             '10 searches per day',
             'Unlimited projects',
-            'Credits rollover (max 1 month extra)',
+            'Unlimited Active Campaigns',
+            'Credits rollover',
             'Dedicated Account Manager'
         ],
         cta: 'Choose Plan',

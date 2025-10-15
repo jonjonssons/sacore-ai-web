@@ -58,6 +58,9 @@ const Footer = () => {
               <li><Link to="/terms-of-service" className="text-gray-600 dark:text-gray-400 hover:text-saas-blue-500 transition-colors">Terms of Service</Link></li>
               <li><Link to="/opt-out" className="text-gray-600 dark:text-gray-400 hover:text-saas-blue-500 transition-colors">Data Rights & Opt-out</Link></li>
               <li><Link to="/cookie-policy" className="text-gray-600 dark:text-gray-400 hover:text-saas-blue-500 transition-colors">Cookie Policy</Link></li>
+              <li><Link to="/sending-policy" className="text-gray-600 dark:text-gray-400 hover:text-saas-blue-500 transition-colors">Sending Policy</Link></li>
+              <li><Link to="/anti-abuse-protection" className="text-gray-600 dark:text-gray-400 hover:text-saas-blue-500 transition-colors">Anti-abuse Protection</Link></li>
+              <li><Link to="/data-processing-agreement" className="text-gray-600 dark:text-gray-400 hover:text-saas-blue-500 transition-colors">Data Processing Agreement</Link></li>
             </ul>
           </div>
         </div>

@@ -250,4 +250,28 @@ export const api = {
   },
 };
 
+// LinkedIn API functions
+export const linkedinApi = {
+  /**
+   * Save LinkedIn user profile
+   */
+  saveUserProfile: async (linkedinUrl: string): Promise<ApiResponse> => {
+    return api.post('/linkedin/save-user-profile', { linkedinUrl });
+  },
+
+  /**
+   * Get LinkedIn session information
+   */
+  getSession: async (): Promise<ApiResponse> => {
+    return api.get('/linkedin/session');
+  },
+
+  /**
+   * Get LinkedIn extension status
+   */
+  getExtensionStatus: async (): Promise<ApiResponse> => {
+    return api.get('/linkedin/extension-status');
+  },
+};
+
 export default api;

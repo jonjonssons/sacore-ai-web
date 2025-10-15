@@ -19,7 +19,9 @@ import {
   LifeBuoy,
   CircleHelp,
   Sun,
-  Moon
+  Moon,
+  Send,
+  CheckSquare
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
@@ -44,6 +46,7 @@ import ChangePassword from '@/pages/authentication/ChangePassword';
 import { CircularProgressbar, buildStyles } from "react-circular-progressbar";
 import "react-circular-progressbar/dist/styles.css";
 import LeadsPage from './LeadsPage';
+import TasksPage from './TasksPage';
 import SearchComponent from '@/components/dashboard/SearchComponent';
 import RequirementsProfileComponent from '@/components/dashboard/RequirementsProfileComponent';
 import { LeadTable } from '@/components/dashboard/LeadTable';
@@ -61,6 +64,10 @@ import EnrichPage from './EnrichPage';
 import SettingsPage from './SettingsPage';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import CampaignsPage from './CampaignsPage';
+import UserProfilePage from './UserProfilePage';
+import SearchResultsPage from './SearchResultsPage';
+import { ThemeContext } from '@/contexts/ThemeContext';
 
 // TaskCard Component
 interface TaskCardProps {
@@ -454,11 +461,12 @@ const PricingDialog: React.FC<{ open: boolean; onOpenChange: (open: boolean) => 
     const defaultPlanData = {
       basic: {
         credits: 500,
-        monthlyPrice: 69,
-        annualPrice: 51,
+        monthlyPrice: 99,
+        annualPrice: 75,
         searchesPerMonth: 10,
         searchesPerDay: 5,
-        projects: '5 Projects at the same time'
+        projects: '5 Projects at the same time',
+        campaigns: '5 Active Campaigns'
       },
       explorer: {
         credits: 1500,
@@ -466,7 +474,8 @@ const PricingDialog: React.FC<{ open: boolean; onOpenChange: (open: boolean) => 
         annualPrice: 150,
         searchesPerMonth: 25,
         searchesPerDay: 7,
-        projects: 'Unlimited Projects'
+        projects: 'Unlimited Projects',
+        campaigns: 'Unlimited Active Campaigns'
       },
       pro: {
         credits: 6500,
@@ -474,7 +483,8 @@ const PricingDialog: React.FC<{ open: boolean; onOpenChange: (open: boolean) => 
         annualPrice: 600,
         searchesPerMonth: 50,
         searchesPerDay: 10,
-        projects: 'Unlimited Projects'
+        projects: 'Unlimited Projects',
+        campaigns: 'Unlimited Active Campaigns'
       }
     };
 
@@ -494,7 +504,8 @@ const PricingDialog: React.FC<{ open: boolean; onOpenChange: (open: boolean) => 
       `${planData.searchesPerMonth} searches per month`,
       `${planData.searchesPerDay} searches per day`,
       planData.projects,
-      'Credits rollover (max 1 month extra)',
+      planData.campaigns,
+      annual ? 'Credits rollover' : 'Credits rollover (max 1 month extra)',
     ];
 
     // Add Dedicated Account Manager for Pro plan with annual billing
@@ -1321,6 +1332,8 @@ const AppSidebar: React.FC<{ onHandleLogout: () => void; activePage: string; set
   // write a useeffect hook here to get userProjects
 
   const [userProjects, setUserProjects] = useState([]);
+  const [recentSearches, setRecentSearches] = useState<any[]>([]);
+  const [recentSearchesLoading, setRecentSearchesLoading] = useState(false);
 
   // write a useEffect hook here to get userProjects
 
@@ -1336,6 +1349,25 @@ const AppSidebar: React.FC<{ onHandleLogout: () => void; activePage: string; set
       }
     }
     fetchProjects();
+
+    const fetchRecentSearches = async () => {
+      try {
+        setRecentSearchesLoading(true);
+        const response = await authService.getRecentSearches();
+        if (response.success && response.data?.searches) {
+          setRecentSearches(response.data.searches);
+        } else {
+          setRecentSearches([]);
+        }
+      } catch (error) {
+        console.error("Error fetching recent searches:", error);
+        setRecentSearches([]);
+      } finally {
+        setRecentSearchesLoading(false);
+      }
+    };
+
+    fetchRecentSearches();
 
     // Handler for project created event
     const handleProjectCreated = () => {
@@ -1477,6 +1509,20 @@ const AppSidebar: React.FC<{ onHandleLogout: () => void; activePage: string; set
                     active={activePage === 'enrich'}
                   />
                 </div>
+                {/* <div onClick={() => handleMenuClick('campaigns', '/campaigns')}>
+                  <SidebarMenuItemComponent
+                    icon={Send}
+                    label="Campaigns"
+                    active={activePage === 'campaigns'}
+                  />
+                </div> */}
+                {/* <div onClick={() => handleMenuClick('tasks', '/tasks')}>
+                  <SidebarMenuItemComponent
+                    icon={CheckSquare}
+                    label="Tasks"
+                    active={activePage === 'tasks'}
+                  />
+                </div> */}
                 <div onClick={() => handleMenuClick('candidates', '/candidates')}>
                   <SidebarMenuItemComponent
                     icon={User}
@@ -1488,7 +1534,7 @@ const AppSidebar: React.FC<{ onHandleLogout: () => void; activePage: string; set
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {Array.isArray(userProjects) && userProjects.length > 0 && (
+          {Array.isArray(userProjects) && userProjects.length > 0 && !isCollapsed && (
             <>
               <Separator className={`${isDarkMode ? 'border-gray-700' : 'border-gray-300'} `} />
 
@@ -1527,6 +1573,57 @@ const AppSidebar: React.FC<{ onHandleLogout: () => void; activePage: string; set
                           icon={User}
                           label={project.name}
                           active={activePage === `project-${project._id}`}
+                        />
+                      </div>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            </>
+          )}
+
+          {/* Searches past 24 hours */}
+          {!isCollapsed && (
+            <>
+              <Separator className={`${isDarkMode ? 'border-gray-700' : 'border-gray-300'} `} />
+              <SidebarGroup>
+                <AnimatePresence>
+                  {!isCollapsed && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <SidebarGroupLabel className={`${isDarkMode ? 'text-white' : 'text-black/90'} font-bold uppercase`}>Searches past 24 hours</SidebarGroupLabel>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {recentSearchesLoading && !isCollapsed && (
+                      <div className={`text-xs px-2 py-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>Loading...</div>
+                    )}
+                    {!recentSearchesLoading && recentSearches.length === 0 && !isCollapsed && (
+                      <div className={`text-xs px-2 py-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>No recent searches</div>
+                    )}
+                    {!isCollapsed && recentSearches.map((search: any) => (
+                      <div
+                        key={search._id}
+                        onClick={() => {
+                          try {
+                            // Navigate to search results page
+                            handleMenuClick('search-results', `/search-results/${search._id}`);
+                          } catch (error) {
+                            console.error('Error navigating to search results:', error);
+                          }
+                        }}
+                        className="cursor-pointer"
+                      >
+                        <SidebarMenuItemComponent
+                          icon={Search}
+                          label={(search.searchQuery || 'Untitled search').slice(0, 24)}
+                          active={false}
                         />
                       </div>
                     ))}
@@ -1747,6 +1844,9 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
     } else if (pathname.startsWith('/projects/')) {
       const projectId = pathname.split('/projects/')[1];
       setActivePage(`project-${projectId}`);
+    } else if (pathname.startsWith('/search-results/')) {
+      const searchId = pathname.split('/search-results/')[1];
+      setActivePage(`search-results-${searchId}`);
     } else if (pathname.includes('candidates')) {
       setActivePage('candidates');
     } else if (pathname.includes('settings')) {
@@ -1755,6 +1855,17 @@ const Dashboard: React.FC<{ onLogout: () => void }> = ({ onLogout }) => {
       setActivePage('dashboard');
     }
   }, [location]);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code && window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'gmail_oauth_code', code }, window.location.origin);
+        window.close();
+      }
+    } catch { }
+  }, []);
 
   return (
     <SidebarProvider
@@ -1817,7 +1928,7 @@ const DashboardContent: React.FC<{
   const [pastSearches, setPastSearches] = useState<any[]>([]);
   const [projects, setProjects] = useState<any[]>([]);
   const [profileCountMap, setProfileCountMap] = useState<{ [key: string]: number }>({});
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
   const [sourceInclusions, setSourceInclusions] = useState({
     includeSignalHire: true,
     includeBrave: true,
@@ -1828,6 +1939,38 @@ const DashboardContent: React.FC<{
   });
 
   const navigate = useNavigate();
+
+  // Restore a recent search when requested by sidebar
+  useEffect(() => {
+    const restore = () => {
+      try {
+        const raw = localStorage.getItem('restoreRecentSearch');
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data && data.searchCriteria) {
+          // Restore search criteria from API data
+          if (data.searchCriteria.title) setSearchQuery(data.searchCriteria.title);
+          if (data.sourceInclusions) setSourceInclusions(data.sourceInclusions);
+          setSearchPhase('leads');
+          if (data._id) localStorage.setItem('currentRecentSearchId', data._id);
+        }
+      } catch (error) {
+        console.error('Error restoring recent search:', error);
+      } finally {
+        localStorage.removeItem('restoreRecentSearch');
+      }
+    };
+
+    restore();
+    window.addEventListener('restoreRecentSearch', restore);
+    return () => {
+      window.removeEventListener('restoreRecentSearch', restore);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+
+
 
   useEffect(() => {
     if (activePage === 'profile') {
@@ -1869,9 +2012,9 @@ const DashboardContent: React.FC<{
     setShowBetaMessage(false);
   };
 
-  const handleSearch = (query: string, file?: File, searchModes?: { webEnabled: boolean; csvEnabled: boolean }) => {
+  const handleSearch = (query: string, files?: File[], searchModes?: { webEnabled: boolean; csvEnabled: boolean }) => {
     setSearchQuery(query);
-    setUploadedFile(file || null);
+    setUploadedFiles(files || []);
 
     // Store search modes, default to both enabled if not provided
     const modes = searchModes || { webEnabled: true, csvEnabled: true };
@@ -1883,7 +2026,7 @@ const DashboardContent: React.FC<{
       includeGoogle: modes.webEnabled,
       includeContactOut: modes.webEnabled,
       includeIcypeas: modes.webEnabled,
-      includeCsvImport: modes.csvEnabled && (file !== undefined && file !== null)
+      includeCsvImport: modes.csvEnabled && !!(files && files.length > 0)
     };
 
     // Store the source inclusions for use in RequirementsProfileComponent
@@ -1969,7 +2112,7 @@ const DashboardContent: React.FC<{
               {/* Requirements Profile Component */}
               <RequirementsProfileComponent
                 searchQuery={searchQuery}
-                uploadedFile={uploadedFile} // Pass the file
+                uploadedFiles={uploadedFiles} // Pass the files
                 sourceInclusions={sourceInclusions} // Pass source inclusion flags
                 onBack={handleBackToSearch}
                 onProcessing={handleProcessLeads}
@@ -2060,10 +2203,29 @@ const DashboardContent: React.FC<{
         <EnrichPage />
       </div>
     );
+  } else if (activePage === "campaigns") {
+    return (
+      <div className={`w-full h-full max-h-full overflow-y-auto ${isDarkMode ? 'bg-primary' : ''}`}>
+        <CampaignsPage />
+      </div>
+    );
+  } else if (activePage === "tasks") {
+    return (
+      <div className={`w-full h-full max-h-full overflow-y-auto ${isDarkMode ? 'bg-primary' : ''}`}>
+        <TasksPage />
+      </div>
+    );
   } else if (activePage === "settings") {
     return (
       <div className={`w-full h-full max-h-full overflow-y-auto ${isDarkMode ? 'bg-primary' : ''}`}>
         <SettingsPage />
+      </div>
+    );
+  } else if (activePage.startsWith("search-results-")) {
+    const searchId = activePage.replace("search-results-", "");
+    return (
+      <div className={`w-full h-full max-h-full overflow-y-auto ${isDarkMode ? 'bg-primary' : ''}`}>
+        <SearchResultsPage />
       </div>
     );
   }

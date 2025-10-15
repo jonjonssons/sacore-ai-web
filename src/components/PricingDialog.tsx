@@ -96,11 +96,12 @@ const PricingDialog: React.FC<{ open: boolean; onOpenChange: (open: boolean) => 
         const defaultPlanData = {
             basic: {
                 credits: 500,
-                monthlyPrice: 69,
-                annualPrice: 51,
+                monthlyPrice: 99,
+                annualPrice: 75,
                 searchesPerMonth: 10,
                 searchesPerDay: 5,
-                projects: '5 Projects at the same time'
+                projects: '5 Projects at the same time',
+                campaigns: '5 Active Campaigns'
             },
             explorer: {
                 credits: 1500,
@@ -108,7 +109,8 @@ const PricingDialog: React.FC<{ open: boolean; onOpenChange: (open: boolean) => 
                 annualPrice: 150,
                 searchesPerMonth: 25,
                 searchesPerDay: 7,
-                projects: 'Unlimited Projects'
+                projects: 'Unlimited Projects',
+                campaigns: 'Unlimited Active Campaigns'
             },
             pro: {
                 credits: 6500,
@@ -116,7 +118,8 @@ const PricingDialog: React.FC<{ open: boolean; onOpenChange: (open: boolean) => 
                 annualPrice: 600,
                 searchesPerMonth: 50,
                 searchesPerDay: 10,
-                projects: 'Unlimited Projects'
+                projects: 'Unlimited Projects',
+                campaigns: 'Unlimited Active Campaigns'
             }
         };
 
@@ -136,7 +139,8 @@ const PricingDialog: React.FC<{ open: boolean; onOpenChange: (open: boolean) => 
             `${planData.searchesPerMonth} searches per month`,
             `${planData.searchesPerDay} searches per day`,
             planData.projects,
-            'Credits rollover (max 1 month extra)',
+            planData.campaigns,
+            annual ? 'Credits rollover' : 'Credits rollover (max 1 month extra)',
         ];
 
         // Add Dedicated Account Manager for Pro plan with annual billing

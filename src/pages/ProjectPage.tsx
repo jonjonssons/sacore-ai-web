@@ -85,6 +85,7 @@ interface ProjectLead {
         skills: string[];
         contactsFetched: any;
     };
+    signalhireData?: any;  // Backend uses lowercase 'h' - full SignalHire enriched data
 }
 
 type SortField = 'name' | 'title' | 'company' | 'industry' | 'location' | 'relevanceScore';
@@ -231,10 +232,6 @@ export default function ProjectPage() {
                     // SignalHire profile with nested uid
                     console.log('✅ Using profile.signalHireData.uid:', profile.signalHireData.uid);
                     profileIds.push(profile.signalHireData.uid);
-                } else if (profile.analysis?.enrichedData?.uid) {
-                    // SignalHire profile with uid in analysis.enrichedData
-                    console.log('✅ Using profile.analysis.enrichedData.uid:', profile.analysis.enrichedData.uid);
-                    profileIds.push(profile.analysis.enrichedData.uid);
                 } else if (profile.linkedinUrl && profile.linkedinUrl.trim() !== '') {
                     // LinkedIn profile - use LinkedIn URL
                     console.log('🔗 Using LinkedIn URL:', profile.linkedinUrl);
@@ -300,22 +297,6 @@ export default function ProjectPage() {
 
                         case 'result':
                             // Handle individual result
-                            console.log('🔍 Processing batch email result:', {
-                                identifier: data.identifier,
-                                profileId: data.profileId,
-                                status: data.status,
-                                emailCount: data.emails?.length || 0,
-                                fullName: data.fullName
-                            });
-
-                            console.log('🔍 Available profiles for email matching:', profiles.map(p => ({
-                                name: p.name,
-                                _id: p._id,
-                                uid: p.uid,
-                                signalHireUid: (p as any).signalHireData?.uid,
-                                analysisUid: (p as any).analysis?.enrichedData?.uid
-                            })));
-
                             if (data.status === 'success' && data.emails && data.emails.length > 0) {
                                 const emails = data.emails.map((email: any) => email.value || email.email).filter((email: string) => email).join(', ');
 
@@ -328,8 +309,7 @@ export default function ProjectPage() {
                                     profileToUpdate = profiles.find(p =>
                                         p.uid === data.profileId ||
                                         p._id === data.profileId ||
-                                        (p as any).signalHireData?.uid === data.profileId ||
-                                        (p as any).analysis?.enrichedData?.uid === data.profileId
+                                        (p as any).signalHireData?.uid === data.profileId
                                     );
                                 } else if (data.identifier) {
                                     // Check if identifier is a UID (32-char string without linkedin.com)
@@ -338,8 +318,7 @@ export default function ProjectPage() {
                                         profileToUpdate = profiles.find(p =>
                                             p.uid === data.identifier ||
                                             p._id === data.identifier ||
-                                            (p as any).signalHireData?.uid === data.identifier ||
-                                            (p as any).analysis?.enrichedData?.uid === data.identifier
+                                            (p as any).signalHireData?.uid === data.identifier
                                         );
                                     }
 
@@ -363,13 +342,13 @@ export default function ProjectPage() {
                                     );
 
                                     // Update in database
-                                    authService.updateProfile(profileToUpdate._id, [{
+                                    authService.updateProfile(profileToUpdate._id, {
                                         name: profileToUpdate.name,
                                         location: profileToUpdate.location,
                                         title: profileToUpdate.title,
                                         company: profileToUpdate.company,
                                         email: emails
-                                    }]).catch(err => {
+                                    }).catch(err => {
                                         console.error('Failed to update profile in batch email fetch:', err);
                                     });
                                 } else {
@@ -390,8 +369,7 @@ export default function ProjectPage() {
                                     profileToUpdate = profiles.find(p =>
                                         p.uid === data.profileId ||
                                         p._id === data.profileId ||
-                                        (p as any).signalHireData?.uid === data.profileId ||
-                                        (p as any).analysis?.enrichedData?.uid === data.profileId
+                                        (p as any).signalHireData?.uid === data.profileId
                                     );
                                 } else if (data.identifier) {
                                     // Check if identifier is a UID (32-char string without linkedin.com)
@@ -400,8 +378,7 @@ export default function ProjectPage() {
                                         profileToUpdate = profiles.find(p =>
                                             p.uid === data.identifier ||
                                             p._id === data.identifier ||
-                                            (p as any).signalHireData?.uid === data.identifier ||
-                                            (p as any).analysis?.enrichedData?.uid === data.identifier
+                                            (p as any).signalHireData?.uid === data.identifier
                                         );
                                     }
 
@@ -425,13 +402,13 @@ export default function ProjectPage() {
                                     );
 
                                     // Update in database with no emails status
-                                    authService.updateProfile(profileToUpdate._id, [{
+                                    authService.updateProfile(profileToUpdate._id, {
                                         name: profileToUpdate.name,
                                         location: profileToUpdate.location,
                                         title: profileToUpdate.title,
                                         company: profileToUpdate.company,
                                         email: 'No emails found'
-                                    }]).catch(err => {
+                                    }).catch(err => {
                                         console.error('Failed to update profile in batch email fetch:', err);
                                     });
                                 } else {
@@ -861,6 +838,13 @@ export default function ProjectPage() {
     const [isCreatingNewProject, setIsCreatingNewProject] = useState(false);
     const [newProjectName, setNewProjectName] = useState('');
 
+    // Add to Campaign modal state
+    const [isAddToCampaignModalOpen, setIsAddToCampaignModalOpen] = useState(false);
+    const [availableCampaigns, setAvailableCampaigns] = useState<{ _id: string; name: string; status: string }[]>([]);
+    const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
+    const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+    const [addingToCampaign, setAddingToCampaign] = useState(false);
+
     const handleAddCustomColumn = () => {
         const trimmed = newColumnName.trim();
         if (!trimmed) return;
@@ -1035,7 +1019,7 @@ export default function ProjectPage() {
                                                 ...prev,
                                                 [profile._id]: {
                                                     analysis: profile.analysis,
-                                                    enrichedData: profile.analysis.enrichedData
+                                                    enrichedData: profile.analysis.enrichedData || profile.signalhireData || (profile as any).signalHireData
                                                 }
                                             }));
                                         }
@@ -1166,8 +1150,7 @@ export default function ProjectPage() {
                     name: profile.name,
                     _id: profile._id,
                     uid: profile.uid,
-                    signalHireData: profile.signalHireData,
-                    analysisEnrichedDataUid: profile.analysis?.enrichedData?.uid
+                    signalHireData: profile.signalHireData
                 });
 
                 // Check if this is a SignalHire profile (has uid) 
@@ -1179,10 +1162,6 @@ export default function ProjectPage() {
                     // SignalHire profile with nested uid
                     console.log('✅ Using profile.signalHireData.uid:', profile.signalHireData.uid);
                     profileIds.push(profile.signalHireData.uid);
-                } else if (profile.analysis?.enrichedData?.uid) {
-                    // SignalHire profile with uid in analysis.enrichedData
-                    console.log('✅ Using profile.analysis.enrichedData.uid:', profile.analysis.enrichedData.uid);
-                    profileIds.push(profile.analysis.enrichedData.uid);
                 } else {
                     // Fallback: use profile _id
                     console.log('⚠️ Fallback: using profile._id:', profile._id);
@@ -1223,14 +1202,7 @@ export default function ProjectPage() {
                         case 'result':
                             const { profileId, linkedinUrl, fullName, status, error } = data.data;
 
-                            console.log(`Processing batch LinkedIn URL result for profileId: ${profileId}, status: ${status}, linkedinUrl: ${linkedinUrl}`);
-                            console.log('🔍 Available profiles for matching:', profiles.map(p => ({
-                                name: p.name,
-                                _id: p._id,
-                                uid: p.uid,
-                                signalHireUid: (p as any).signalHireData?.uid,
-                                analysisUid: (p as any).analysis?.enrichedData?.uid
-                            })));
+                            console.log(`Processing result for profileId: ${profileId}, status: ${status}, linkedinUrl: ${linkedinUrl}`);
 
                             // Update progress first
                             setLinkedInUrlProgress(prev => ({
@@ -1243,26 +1215,14 @@ export default function ProjectPage() {
                             setProfiles(prevProfiles => {
                                 let profileFound = false;
                                 const updatedProfiles = prevProfiles.map(profile => {
-                                    // Match by uid, _id, or analysis.enrichedData.uid
+                                    // Match by uid or _id
                                     const matchesProfile = profile.uid === profileId ||
                                         profile._id === profileId ||
-                                        profile.signalHireData?.uid === profileId ||
-                                        (profile as any).analysis?.enrichedData?.uid === profileId;
+                                        profile.signalHireData?.uid === profileId;
 
                                     if (matchesProfile && !profileFound) {
                                         profileFound = true;
-                                        console.log(`✅ Found matching profile: ${profile.name} (${profile._id}) for profileId: ${profileId}`);
-
-                                        // Log which field matched
-                                        if (profile.uid === profileId) {
-                                            console.log('📝 Matched by profile.uid');
-                                        } else if (profile._id === profileId) {
-                                            console.log('📝 Matched by profile._id');
-                                        } else if (profile.signalHireData?.uid === profileId) {
-                                            console.log('📝 Matched by profile.signalHireData.uid');
-                                        } else if ((profile as any).analysis?.enrichedData?.uid === profileId) {
-                                            console.log('📝 Matched by profile.analysis.enrichedData.uid');
-                                        }
+                                        console.log(`Found matching profile: ${profile.name} (${profile._id})`);
 
                                         // Remove from loading state
                                         setLoadingLinkedInUrls(prev => prev.filter(id => id !== profile._id));
@@ -1270,23 +1230,6 @@ export default function ProjectPage() {
                                         if (status === 'success' && linkedinUrl) {
                                             console.log(`SUCCESS: Updated LinkedIn URL for ${profile.name}: ${linkedinUrl}`);
                                             toast.success(`LinkedIn URL found for ${profile.name}`);
-
-                                            // Update profile in database
-                                            (async () => {
-                                                try {
-                                                    await authService.updateProfile(profile._id, [{
-                                                        name: profile.name,
-                                                        location: profile.location,
-                                                        title: profile.title,
-                                                        company: profile.company,
-                                                        email: profile.email || profile.emailAddress,
-                                                        linkedinUrl: linkedinUrl
-                                                    }]);
-                                                    console.log(`✅ Profile LinkedIn URL updated in database: ${profile.name}`);
-                                                } catch (updateError) {
-                                                    console.error(`❌ Failed to update profile LinkedIn URL in database:`, updateError);
-                                                }
-                                            })();
 
                                             // Update the profile with the LinkedIn URL
                                             return { ...profile, linkedinUrl: linkedinUrl };
@@ -1306,9 +1249,6 @@ export default function ProjectPage() {
                                 });
 
                                 // Only return new array if we found and updated a profile
-                                if (!profileFound) {
-                                    console.warn(`❌ No profile found for batch LinkedIn URL profileId: ${profileId}`);
-                                }
                                 return profileFound ? [...updatedProfiles] : prevProfiles;
                             });
 
@@ -1401,20 +1341,18 @@ export default function ProjectPage() {
             setSelectedLeads([]);
             setSelectAll(false);
 
-            // TODO: Call the bulk delete API when endpoint is available
-            // Temporary placeholder - always succeed for now
-            toast.success(`Successfully deleted ${profilesToDelete.length} profile${profilesToDelete.length > 1 ? 's' : ''}`);
+            // Call the bulk delete API
+            const response = await authService.deleteProfiles(profilesToDelete);
 
-            // When API is available, use this structure:
-            // const response = await authService.deleteProfiles(profilesToDelete);
-            // if (response) {
-            //     toast.success(`Successfully deleted ${profilesToDelete.length} profile${profilesToDelete.length > 1 ? 's' : ''}`);
-            // } else {
-            //     // Rollback UI changes if deletion failed
-            //     setProfiles(originalProfiles);
-            //     setSelectedLeads(profilesToDelete);
-            //     toast.error(`Failed to delete profiles: ${response?.message || 'Unknown error'}`);
-            // }
+            if (response) {
+                toast.success(`Successfully deleted ${profilesToDelete.length} profile${profilesToDelete.length > 1 ? 's' : ''}`);
+            } else {
+                // Rollback UI changes if deletion failed
+                setProfiles(originalProfiles);
+                setSelectedLeads(profilesToDelete);
+
+                toast.error(`Failed to delete profiles: ${response?.message || 'Unknown error'}`);
+            }
 
         } catch (error: any) {
             console.error('Error deleting profiles:', error);
@@ -1569,6 +1507,60 @@ export default function ProjectPage() {
         toast.success(`Exported ${profilesToExport.length} profiles to CSV`);
     };
 
+    // Function to handle adding selected profiles to campaign
+    const handleAddToCampaign = () => {
+        if (selectedLeads.length === 0) {
+            toast.error("Please select at least one profile to add to campaign.");
+            return;
+        }
+        setSelectedCampaignId('');
+        setIsAddToCampaignModalOpen(true);
+    };
+
+    // Function to execute adding profiles to selected campaign
+    const handleAddToCampaignSubmit = async () => {
+        if (!selectedCampaignId) {
+            toast.error("Please select a campaign.");
+            return;
+        }
+
+        setAddingToCampaign(true);
+
+        try {
+            // Get the selected profile objects
+            const selectedProfiles = profiles.filter(profile => selectedLeads.includes(profile._id));
+
+            // Transform profiles to match the API expected format
+            const prospects = selectedProfiles.map(profile => ({
+                name: profile.name,
+                email: profile.email || profile.emailAddress || '',
+                linkedin: profile.linkedinUrl || '',
+                company: profile.company || '',
+                position: profile.title || '',
+                phone: profile.phone || ''
+            }));
+
+            const response = await authService.addProspectsToCampaign(selectedCampaignId, prospects);
+
+            if (response.success) {
+                toast.success(`Successfully added ${response.data.prospectsAdded} prospects to the campaign!`);
+
+                // Clear selection and close modal
+                setSelectedLeads([]);
+                setSelectAll(false);
+                setIsAddToCampaignModalOpen(false);
+                setSelectedCampaignId('');
+            } else {
+                throw new Error(response.message || 'Failed to add prospects to campaign');
+            }
+        } catch (error: any) {
+            console.error('Error adding prospects to campaign:', error);
+            toast.error(`Failed to add prospects to campaign: ${error.message || 'Unknown error'}`);
+        } finally {
+            setAddingToCampaign(false);
+        }
+    };
+
     const handleAnalyzeClick = (lead: ProjectLead) => {
         setDeepAnalysisSelectedLeadId(lead._id);
         setDeepAnalysisSelectedLead(lead);
@@ -1594,12 +1586,6 @@ export default function ProjectPage() {
             if (lead.uid) {
                 // SignalHire profile - use uid
                 profileIds.push(lead.uid);
-            } else if ((lead as any).signalHireData?.uid) {
-                // SignalHire profile with nested uid
-                profileIds.push((lead as any).signalHireData.uid);
-            } else if ((lead as any).analysis?.enrichedData?.uid) {
-                // SignalHire profile with uid in analysis.enrichedData
-                profileIds.push((lead as any).analysis.enrichedData.uid);
             } else if (lead.linkedinUrl && lead.linkedinUrl.trim() !== '') {
                 // LinkedIn profile - use LinkedIn URL
                 linkedinUrls.push(lead.linkedinUrl);
@@ -1649,13 +1635,13 @@ export default function ProjectPage() {
                                 );
 
                                 // Update in database
-                                authService.updateProfile(lead._id, [{
+                                authService.updateProfile(lead._id, {
                                     name: lead.name,
                                     location: lead.location,
                                     title: lead.title,
                                     company: lead.company,
                                     email: emails
-                                }]).catch(err => {
+                                }).catch(err => {
                                     console.error('Failed to update profile:', err);
                                 });
 
@@ -1669,13 +1655,13 @@ export default function ProjectPage() {
                                 );
 
                                 // Update in database with no emails status
-                                authService.updateProfile(lead._id, [{
+                                authService.updateProfile(lead._id, {
                                     name: lead.name,
                                     location: lead.location,
                                     title: lead.title,
                                     company: lead.company,
                                     email: 'No emails found'
-                                }]).catch(err => {
+                                }).catch(err => {
                                     console.error('Failed to update profile:', err);
                                 });
                             } else if (data.status === 'failed') {
@@ -1734,136 +1720,94 @@ export default function ProjectPage() {
 
     const handleGetLinkedInUrlClick = async (lead: ProjectLead) => {
         setLoadingLinkedInUrls(prev => [...prev, lead._id]);
-
         try {
+            const token = await authService.getToken();
             // Use uid if available (for SignalHire profiles), otherwise use _id
-            const profileIdToSend = lead.uid ||
-                (lead as any).signalHireData?.uid ||
-                (lead as any).analysis?.enrichedData?.uid ||
-                lead._id;
+            const profileIdToSend = lead.uid || lead._id;
 
-            const payload = {
-                profileIds: [profileIdToSend]
-            };
-
-            console.log('Starting single LinkedIn URL extraction for:', lead.name, 'with payload:', payload);
-
-            // Use the streaming method
-            const cleanup = await authService.getLinkedInUrlsStream(
-                payload,
-                // onStreamData callback
-                (data) => {
-                    console.log('Single LinkedIn URL stream data received:', data);
-
-                    switch (data.type) {
-                        case 'result':
-                            const { profileId, linkedinUrl, fullName, status, error } = data.data;
-
-                            console.log(`Processing single LinkedIn URL result for profileId: ${profileId}, status: ${status}, linkedinUrl: ${linkedinUrl}`);
-
-                            // Find and update the corresponding profile
-                            setProfiles(prevProfiles => {
-                                let profileFound = false;
-                                const updatedProfiles = prevProfiles.map(profile => {
-                                    // Match by uid, _id, or analysis.enrichedData.uid
-                                    const matchesProfile = profile.uid === profileId ||
-                                        profile._id === profileId ||
-                                        (profile as any).signalHireData?.uid === profileId ||
-                                        (profile as any).analysis?.enrichedData?.uid === profileId;
-
-                                    if (matchesProfile && profile._id === lead._id && !profileFound) {
-                                        profileFound = true;
-                                        console.log(`Found matching profile: ${profile.name} (${profile._id})`);
-
-                                        if (status === 'success' && linkedinUrl) {
-                                            console.log(`SUCCESS: Updated LinkedIn URL for ${profile.name}: ${linkedinUrl}`);
-                                            // Remove individual success toast to avoid spam
-
-                                            // Update profile in database
-                                            (async () => {
-                                                try {
-                                                    await authService.updateProfile(profile._id, [{
-                                                        name: profile.name,
-                                                        location: profile.location,
-                                                        title: profile.title,
-                                                        company: profile.company,
-                                                        email: profile.email || profile.emailAddress,
-                                                        linkedinUrl: linkedinUrl
-                                                    }]);
-                                                    console.log(`✅ Profile LinkedIn URL updated in database: ${profile.name}`);
-                                                } catch (updateError) {
-                                                    console.error(`❌ Failed to update profile LinkedIn URL in database:`, updateError);
-                                                }
-                                            })();
-
-                                            // Update the profile with the LinkedIn URL
-                                            return { ...profile, linkedinUrl: linkedinUrl };
-                                        } else if (status === 'no_linkedin_url_found') {
-                                            console.log(`NO URL: No LinkedIn URL found for ${profile.name}`);
-                                            // Remove individual warning toast to avoid spam
-                                            // Mark as no URL found
-                                            return { ...profile, linkedinUrlStatus: 'no_url_found' };
-                                        } else if (status === 'failed') {
-                                            console.log(`FAILED: Failed to get LinkedIn URL for ${profile.name}: ${error}`);
-                                            // Remove individual error toast to avoid spam
-                                            // Mark as failed
-                                            return { ...profile, linkedinUrlStatus: 'failed' };
-                                        }
-                                    }
-                                    return profile;
-                                });
-
-                                // Only return new array if we found and updated a profile
-                                return profileFound ? [...updatedProfiles] : prevProfiles;
-                            });
-
-                            // Remove from loading state when we get a result (with a small delay)
-                            setTimeout(() => {
-                                setLoadingLinkedInUrls(prev => prev.filter(id => id !== lead._id));
-                            }, 300);
-                            break;
-
-                        case 'complete':
-                            console.log('Single LinkedIn URL extraction completed');
-                            // Remove loading state when stream completes (with a small delay)
-                            setTimeout(() => {
-                                setLoadingLinkedInUrls(prev => prev.filter(id => id !== lead._id));
-                            }, 300);
-                            break;
-
-                        case 'error':
-                            // Remove loading state on error (with a small delay)
-                            setTimeout(() => {
-                                setLoadingLinkedInUrls(prev => prev.filter(id => id !== lead._id));
-                            }, 300);
-                            console.log(`LinkedIn URL extraction error: ${data.message}`);
-                            // Removed individual error toast to avoid spam
-                            break;
-
-                        default:
-                            // Handle other message types silently for single profile
-                            break;
-                    }
+            const response = await fetch(`${API_BASE_URL}/profile/get-linkedin-urls`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
                 },
-                // onError callback
-                (error) => {
-                    console.error('Single LinkedIn URL stream error:', error);
-                    // Remove loading state on error
-                    setLoadingLinkedInUrls(prev => prev.filter(id => id !== lead._id));
-                    toast.error(`Error fetching LinkedIn URL: ${error.message || 'Unknown error'}`);
-                },
-                // onComplete callback
-                () => {
-                    console.log('Single LinkedIn URL stream completed');
-                    // Remove loading state when stream completes (if not already removed)
-                    setLoadingLinkedInUrls(prev => prev.filter(id => id !== lead._id));
+                body: JSON.stringify({
+                    profileIds: [profileIdToSend]
+                })
+            });
+
+            if (!response.ok) throw new Error(`API error: ${response.statusText}`);
+
+            const data = await response.json();
+            console.log('LinkedIn URL API response:', data); // Add debugging
+
+            if (data.success && data.results && data.results.length > 0) {
+                // For single profile requests, use the first result
+                // For batch requests, find by profileId match
+                let profileResult;
+
+                if (data.results.length === 1) {
+                    // Single profile request - use the only result
+                    profileResult = data.results[0];
+                    console.log('Using single result:', profileResult);
+                } else {
+                    // Multiple results - find by profileId match
+                    profileResult = data.results.find((r: any) =>
+                        r.profileId === profileIdToSend || r.profileId === lead.id || r.profileId === lead._id
+                    );
+                    console.log('Found matching result:', profileResult);
                 }
-            );
 
+                if (profileResult) {
+                    console.log('Profile result status:', profileResult.status, 'LinkedIn URL:', profileResult.linkedinUrl);
+
+                    if (profileResult.status === 'success' && profileResult.linkedinUrl) {
+                        // Update the linkedinUrl field in profiles state
+                        setProfiles(prevProfiles =>
+                            prevProfiles.map(profile =>
+                                profile._id === lead._id ? { ...profile, linkedinUrl: profileResult.linkedinUrl } : profile
+                            )
+                        );
+                        toast.success(`LinkedIn URL found for ${lead.name}: ${profileResult.linkedinUrl}`);
+                    } else if (profileResult.status === 'no_linkedin_url_found') {
+                        // Update the lead with no_url_found status
+                        setProfiles(prevProfiles =>
+                            prevProfiles.map(profile =>
+                                profile._id === lead._id ? { ...profile, linkedinUrlStatus: 'no_url_found' } : profile
+                            )
+                        );
+                        toast.warning(`No LinkedIn URL found for ${lead.name}`);
+                    } else if (profileResult.status === 'failed') {
+                        // Handle failed status with specific error message and update status
+                        const errorMessage = profileResult.error || 'Failed to fetch profile data';
+                        setProfiles(prevProfiles =>
+                            prevProfiles.map(profile =>
+                                profile._id === lead._id ? { ...profile, linkedinUrlStatus: 'failed' } : profile
+                            )
+                        );
+                        toast.error(`Failed to get LinkedIn URL for ${lead.name}: ${errorMessage}`);
+                    } else {
+                        console.log('Unknown status:', profileResult.status);
+                        // Update with failed status for unknown errors
+                        setProfiles(prevProfiles =>
+                            prevProfiles.map(profile =>
+                                profile._id === lead._id ? { ...profile, linkedinUrlStatus: 'failed' } : profile
+                            )
+                        );
+                        toast.error(`Failed to get LinkedIn URL for ${lead.name}: Unknown status ${profileResult.status}`);
+                    }
+                } else {
+                    console.log('No matching profile result found. Sent ID:', profileIdToSend, 'Lead ID:', lead._id);
+                    console.log('Available results:', data.results);
+                    toast.error(`No result found for ${lead.name}`);
+                }
+            } else {
+                console.log('API response issue:', data);
+                toast.error(`No LinkedIn URL found for ${lead.name}`);
+            }
         } catch (error: any) {
-            console.error('Error in handleGetLinkedInUrlClick:', error);
-            toast.error(`Error getting LinkedIn URL: ${error.message || error}`);
-            // Clear loading state on error
+            toast.error(`Error finding LinkedIn URL: ${error.message || error}`);
+        } finally {
             setLoadingLinkedInUrls(prev => prev.filter(id => id !== lead._id));
         }
     };
@@ -1892,7 +1836,6 @@ export default function ProjectPage() {
     const normalizeLinkedInUrl = (url: string): string => {
         if (!url) return '';
         return url.toLowerCase()
-            .replace(/https?:\/\/(www\.|[a-z]{2}\.)?linkedin\.com/, 'https://linkedin.com') // Normalize domain (remove country codes and www)
             .replace(/\/$/, '') // Remove trailing slash
             .replace(/\?.*$/, '') // Remove query parameters
             .replace(/#.*$/, '') // Remove fragments
@@ -2034,20 +1977,13 @@ export default function ProjectPage() {
                             } else if (data.linkedinUrl || (data.identifier && data.identifier.includes('linkedin.com'))) {
                                 // Find by LinkedIn URL
                                 const urlToMatch = data.linkedinUrl || data.identifier;
-                                console.log('🔍 Searching for profile with URL:', urlToMatch);
-                                console.log('🔍 Available profile URLs:', profiles.map(p => ({ name: p.name, url: p.linkedinUrl })));
-
                                 const foundProfile = profiles.find(profile => {
                                     if (!profile.linkedinUrl) return false;
                                     try {
                                         const profileNormalized = normalizeLinkedInUrl(profile.linkedinUrl);
                                         const dataNormalized = normalizeLinkedInUrl(urlToMatch);
-                                        console.log('🔗 Comparing:', profileNormalized, 'vs', dataNormalized, 'for profile:', profile.name);
-                                        const matches = profileNormalized === dataNormalized;
-                                        if (matches) {
-                                            console.log('✅ MATCH FOUND for profile:', profile.name);
-                                        }
-                                        return matches;
+                                        console.log('🔗 Comparing:', profileNormalized, 'vs', dataNormalized);
+                                        return profileNormalized === dataNormalized;
                                     } catch (error) {
                                         console.warn('URL normalization error:', error);
                                         return profile.linkedinUrl === urlToMatch;
@@ -2055,14 +1991,6 @@ export default function ProjectPage() {
                                 });
                                 profileId = foundProfile?._id;
                                 console.log('✅ Found profile by URL:', profileId ? 'YES' : 'NO', profileId);
-                                if (foundProfile) {
-                                    console.log('📝 Matched profile details:', {
-                                        name: foundProfile.name,
-                                        _id: foundProfile._id,
-                                        originalUrl: foundProfile.linkedinUrl,
-                                        normalizedUrl: normalizeLinkedInUrl(foundProfile.linkedinUrl)
-                                    });
-                                }
                             } else if (data.profileId) {
                                 // Find by SignalHire UID - check both uid and _id properties
                                 const foundProfile = profiles.find(profile =>
@@ -2079,30 +2007,6 @@ export default function ProjectPage() {
                                         uid: foundProfile.uid,
                                         profileId: data.profileId
                                     });
-                                }
-                            }
-
-                            // Fallback: try to find by profile name if no profileId found yet
-                            if (!profileId && data.name) {
-                                console.log('🔄 Attempting fallback match by name for:', data.name);
-                                const fallbackProfile = profiles.find(profile =>
-                                    profile.name.toLowerCase().includes(data.name.toLowerCase()) ||
-                                    data.name.toLowerCase().includes(profile.name.toLowerCase())
-                                );
-                                if (fallbackProfile) {
-                                    console.log('✅ Fallback match found by name:', fallbackProfile.name);
-                                    profileId = fallbackProfile._id;
-
-                                    // Update the profile's LinkedIn URL with the one from the response
-                                    if (data.identifier && data.identifier.includes('linkedin.com')) {
-                                        setProfiles(prev => prev.map(p =>
-                                            p._id === fallbackProfile._id
-                                                ? { ...p, linkedinUrl: data.identifier }
-                                                : p
-                                        ));
-                                    }
-                                } else {
-                                    console.warn('❌ No fallback match found by name for:', data.name);
                                 }
                             }
 
@@ -2168,7 +2072,7 @@ export default function ProjectPage() {
                                         try {
                                             const currentProfile = profiles.find(p => p._id === profileId);
                                             if (currentProfile) {
-                                                await authService.updateProfile(profileId, [{
+                                                await authService.updateProfile(profileId, {
                                                     name: data.name || currentProfile.name,
                                                     location: currentProfile.location,
                                                     title: currentProfile.title,
@@ -2185,7 +2089,7 @@ export default function ProjectPage() {
                                                         description: data.analysis?.description ?? null,
                                                         breakdown: data.analysis?.breakdown ?? null
                                                     }
-                                                }]);
+                                                });
                                                 console.log(`✅ Profile updated in database: ${currentProfile.name}`);
                                             }
                                         } catch (updateError) {
@@ -2196,6 +2100,9 @@ export default function ProjectPage() {
 
                                 } else if (data.status === 'failed') {
                                     toast.error(`Failed to analyze ${data.name || data.linkedinUrl || data.profileId}: ${data.error}`);
+                                } else {
+                                    console.warn('❌ Profile not found for identifier:', identifier);
+                                    console.warn('📋 Available profile URLs:', profiles.map(p => p.linkedinUrl));
                                 }
                             }
                             break;
@@ -2335,6 +2242,30 @@ export default function ProjectPage() {
                 });
         }
     }, [isSaveToProjectModalOpen]);
+
+    // Fetch available campaigns when modal opens
+    useEffect(() => {
+        if (isAddToCampaignModalOpen) {
+            const fetchCampaigns = async () => {
+                setLoadingCampaigns(true);
+                try {
+                    const campaigns = await authService.getCampaigns();
+                    if (Array.isArray(campaigns)) {
+                        setAvailableCampaigns(campaigns);
+                    } else {
+                        toast.error("Failed to load campaigns");
+                    }
+                } catch (error: any) {
+                    console.error('Error fetching campaigns:', error);
+                    toast.error("Failed to load campaigns");
+                } finally {
+                    setLoadingCampaigns(false);
+                }
+            };
+
+            fetchCampaigns();
+        }
+    }, [isAddToCampaignModalOpen]);
 
     const AnalysisCriteriaModal = memo(() => {
         // Local state to track input values while typing
@@ -2696,6 +2627,77 @@ export default function ProjectPage() {
                 </div>
             )}
 
+            {/* Add to Campaign Modal */}
+            {isAddToCampaignModalOpen && (
+                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                    <div className={`p-6 rounded-lg shadow-lg w-full max-w-md ${isDarkMode ? "bg-zinc-900" : "bg-white"}`}>
+                        <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? "text-white" : "text-black"}`}>
+                            Add to Campaign
+                        </h2>
+                        <p className={`mb-4 ${isDarkMode ? "text-zinc-300" : "text-gray-600"}`}>
+                            Select a campaign to add {selectedLeads.length} selected profile{selectedLeads.length > 1 ? 's' : ''}.
+                        </p>
+
+                        {loadingCampaigns ? (
+                            <div className="flex items-center justify-center py-8">
+                                <div className="animate-spin h-8 w-8 border-4 border-blue-600 border-t-transparent rounded-full"></div>
+                            </div>
+                        ) : (
+                            <div className="mb-4">
+                                <label className={`block mb-1 font-medium ${isDarkMode ? "text-white" : "text-gray-700"}`}>
+                                    Select Campaign
+                                </label>
+                                <select
+                                    className={`w-full p-2 border rounded ${isDarkMode ? "bg-zinc-800 text-white border-zinc-700" : "bg-white border-gray-300"}`}
+                                    value={selectedCampaignId}
+                                    onChange={(e) => setSelectedCampaignId(e.target.value)}
+                                >
+                                    <option value="" disabled>Choose a campaign</option>
+                                    {availableCampaigns.map((campaign) => (
+                                        <option key={campaign._id} value={campaign._id}>
+                                            {campaign.name} ({campaign.status})
+                                        </option>
+                                    ))}
+                                </select>
+                                {availableCampaigns.length === 0 && !loadingCampaigns && (
+                                    <p className={`text-sm mt-2 ${isDarkMode ? "text-gray-400" : "text-gray-500"}`}>
+                                        No campaigns available. Create a campaign first.
+                                    </p>
+                                )}
+                            </div>
+                        )}
+
+                        <div className="flex justify-end space-x-3">
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setIsAddToCampaignModalOpen(false);
+                                    setSelectedCampaignId('');
+                                }}
+                                disabled={addingToCampaign}
+                                className={isDarkMode ? "border-zinc-600 text-zinc-300" : ""}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={handleAddToCampaignSubmit}
+                                disabled={!selectedCampaignId || addingToCampaign || availableCampaigns.length === 0}
+                                className={isDarkMode ? "bg-blue-600 text-white hover:bg-blue-700" : ""}
+                            >
+                                {addingToCampaign ? (
+                                    <div className="flex items-center gap-2">
+                                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                                        Adding...
+                                    </div>
+                                ) : (
+                                    `Add to Campaign`
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="flex items-center justify-between py-4">
                 <div className="flex items-center gap-4">
                     <ExportDropdown
@@ -2728,6 +2730,9 @@ export default function ProjectPage() {
                                 <DropdownMenuItem onSelect={() => { handleSaveToProject(); }}>
                                     Save to Project ({selectedLeads.length})
                                 </DropdownMenuItem>
+                                {/* <DropdownMenuItem onSelect={() => { handleAddToCampaign(); }}>
+                                    Add to Campaign ({selectedLeads.length})
+                                </DropdownMenuItem> */}
                                 <DropdownMenuItem onSelect={() => { handleExportSelected(); }}>
                                     Export Selected ({selectedLeads.length})
                                 </DropdownMenuItem>

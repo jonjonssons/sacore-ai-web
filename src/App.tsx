@@ -20,6 +20,9 @@ import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import OptOut from "./pages/OptOut";
 import CookiePolicy from "./pages/CookiePolicy";
+import SendingPolicy from "./pages/SendingPolicy";
+import AntiAbuseProtection from "./pages/AntiAbuseProtection";
+import DataProcessingAgreement from "./pages/DataProcessingAgreement";
 import About from "./pages/About";
 import CookieConsent from "./components/CookieConsent";
 import { useAuth } from "./contexts/AuthContext";
@@ -27,6 +30,7 @@ import { OnboardingVideoModal } from "./components/OnboardingVideoModal";
 import UsersPage from "./pages/admin/UsersPage";
 import DashboardView from "./pages/admin/DashboardView";
 import UserDetailsPage from "./pages/admin/UserDetailsPage";
+import SearchResultsPage from "./pages/SearchResultsPage";
 
 const queryClient = new QueryClient();
 
@@ -49,6 +53,17 @@ const App = () => {
       const userData = JSON.parse(user);
       setIsAdmin(userData.email === 'admin@example.com');
     }
+  }, []);
+
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('code');
+      if (code && window.opener && !window.opener.closed) {
+        window.opener.postMessage({ type: 'gmail_oauth_code', code }, window.location.origin);
+        window.close();
+      }
+    } catch { }
   }, []);
 
   const handleLogin = (email: string) => {
@@ -123,6 +138,9 @@ const App = () => {
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
             <Route path="/opt-out" element={<OptOut />} />
             <Route path="/cookie-policy" element={<CookiePolicy />} />
+            <Route path="/sending-policy" element={<SendingPolicy />} />
+            <Route path="/anti-abuse-protection" element={<AntiAbuseProtection />} />
+            <Route path="/data-processing-agreement" element={<DataProcessingAgreement />} />
 
             <Route
               path="/change-password"
@@ -240,6 +258,14 @@ const App = () => {
             />
             <Route
               path="/settings/*"
+              element={
+                isAuthenticated ?
+                  <Dashboard onLogout={handleLogout} /> :
+                  <Navigate to="/login" replace />
+              }
+            />
+            <Route
+              path="/search-results/:searchId"
               element={
                 isAuthenticated ?
                   <Dashboard onLogout={handleLogout} /> :

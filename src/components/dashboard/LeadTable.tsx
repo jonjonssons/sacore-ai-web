@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, memo } from "react";
 import { flushSync } from "react-dom";
-import { ArrowLeft, Settings, ExternalLink, Copy, Check, Download, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDown, ArrowUp, Search, BrainCog, Filter, Mail, Linkedin, ChevronDown, Upload, Play } from "lucide-react";
+import { ArrowLeft, Settings, ExternalLink, Copy, Check, Download, CheckCircle, ChevronLeft, ChevronRight, ArrowUpDown, ArrowDown, ArrowUp, Search, BrainCog, Filter, Mail, Linkedin, ChevronDown, Upload, Play, Trash2, X } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -33,6 +33,7 @@ import { toast } from "sonner";
 import { DeepAnalysisModal } from "./DeepAnalysisModal";
 import { useTheme } from "@/contexts/ThemeContext";
 import { API_BASE_URL } from "@/services/api";
+import { useNavigate } from "react-router-dom";
 
 interface MatchedCriteria {
   title: boolean;
@@ -63,6 +64,18 @@ interface Lead {
   source?: string; // Added source field
   contactOutData?: any; // Added contactOutData field
   linkedinUrlStatus?: 'no_url_found' | 'failed'; // Added status for LinkedIn URL extraction
+  searchProfileId?: string; // Added searchProfileId field
+  signalHireData?: {
+    uid: string;
+    fullName: string;
+    location: string;
+    experience: Array<{
+      company: string;
+      title: string;
+    }>;
+    skills: string[];
+    contactsFetched: any;
+  };
 }
 
 interface LinkedInProfile {
@@ -90,6 +103,7 @@ interface LinkedInProfile {
   };
   source?: string;
   contactOutData?: any;
+  searchProfileId?: string; // Added searchProfileId field
 }
 
 interface LeadTableProps {
@@ -162,7 +176,8 @@ const formatLinkedInResults = (results: any[]): LinkedInProfile[] => {
         matchedCategories: result.matchedCategories || null,
         matchedCategoriesValue: result.matchedCategoriesValue || null,
         signalHireData: result.signalHireData || null,
-        source: result.source || null
+        source: result.source || null,
+        searchProfileId: result.searchProfileId || null // Add searchProfileId mapping
       };
     }
 
@@ -190,6 +205,7 @@ const formatLinkedInResults = (results: any[]): LinkedInProfile[] => {
         signalHireData: null,
         source: result.source || 'csv_import',
         contactOutData: result.contactOutData || null,
+        searchProfileId: result.searchProfileId || null
       };
     }
 
@@ -227,6 +243,7 @@ const formatLinkedInResults = (results: any[]): LinkedInProfile[] => {
       signalHireData: null,
       source: result.source || 'web',
       contactOutData: result.contactOutData || null,
+      searchProfileId: result.searchProfileId || null
     };
   });
 };
@@ -242,11 +259,14 @@ export function LeadTable({
   onBack = () => { }
 }: LeadTableProps) {
   const { isDarkMode } = useTheme();
+  const navigate = useNavigate();
   const [selectedLeads, setSelectedLeads] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(false);
   const [allLeads, setAllLeads] = useState<Lead[]>([]);
   const [filteredLeads, setFilteredLeads] = useState<Lead[]>([]);
   const [matchedCategoriesValues, setMatchedCategoriesValues] = useState<any[]>([]);
+  const pendingEmailUpdatesRef = useRef<Array<{ profileId: string, emailAddress: string }>>([]);
+  const [pendingEmailUpdates, setPendingEmailUpdates] = useState<Array<{ profileId: string, emailAddress: string }>>([]);
   const [filters, setFilters] = useState<LeadFilterState>({
     title: "all_titles",
     location: "all_locations",
@@ -397,22 +417,57 @@ export function LeadTable({
 
   const handleCellSave = (leadId: string, field: string) => {
     // Add a small delay to handle blur vs click conflicts
-    setTimeout(() => {
+    setTimeout(async () => {
       const editKey = `${leadId}-${field}`;
       const newValue = editedValues[editKey];
 
-      if (newValue !== undefined) {
-        // Update the lead in allLeads state
-        setAllLeads(prevLeads =>
-          prevLeads.map(lead =>
-            lead.id === leadId
-              ? { ...lead, [field]: newValue }
-              : lead
-          )
-        );
+      console.log('[InlineEdit] handleCellSave called', { leadId, field, newValue });
 
-        // Show success feedback
-        toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated successfully`);
+      if (newValue !== undefined) {
+        // Find the lead to get the complete object
+        const leadToUpdate = allLeads.find(lead => lead.id === leadId);
+
+        if (leadToUpdate) {
+          console.log('[InlineEdit] leadToUpdate found', { id: leadToUpdate.id, searchProfileId: leadToUpdate.searchProfileId });
+          // Update the lead in allLeads state
+          setAllLeads(prevLeads =>
+            prevLeads.map(lead =>
+              lead.id === leadId
+                ? { ...lead, [field]: newValue }
+                : lead
+            )
+          );
+
+          // Map frontend field names to backend field names
+          const fieldMapping: { [key: string]: string } = {
+            'name': 'fullName',
+            'title': 'title',
+            'company': 'company',
+            'location': 'location'
+          };
+
+          const backendField = fieldMapping[field] || field;
+
+          // Update the profile data in the backend
+          try {
+            console.log('[InlineEdit] calling updateProfileData', {
+              identifier: leadToUpdate.searchProfileId || leadToUpdate.id,
+              used: leadToUpdate.searchProfileId ? 'searchProfileId' : 'lead.id',
+              updates: { [backendField]: newValue }
+            });
+            await updateProfileData(leadToUpdate, {
+              [backendField]: newValue
+            });
+            console.log(`Successfully updated ${field} in backend`);
+          } catch (updateError: any) {
+            console.error(`Failed to update ${field} in backend:`, updateError);
+            // Don't show error to user as the UI update was successful
+            // But log it for debugging
+          }
+
+          // Show success feedback
+          toast.success(`${field.charAt(0).toUpperCase() + field.slice(1)} updated successfully`);
+        }
       }
 
       // Clear editing state
@@ -672,7 +727,7 @@ export function LeadTable({
       const cleanup = await authService.getEmailsStream(
         payload,
         // onStreamData callback
-        (data) => {
+        async (data) => {
           console.log('Email stream data received:', data);
 
           switch (data.type) {
@@ -732,8 +787,10 @@ export function LeadTable({
                 matchedLead = allLeads.find(lead => lead.linkedinUrl === identifier);
               }
 
+
               if (matchedLead) {
                 const profileId = matchedLead.id;
+                console.log('[DEBUG] Found matched lead:', matchedLead.name, 'profileId:', profileId, 'searchProfileId:', matchedLead.searchProfileId);
                 console.log('Batch email: Found matching lead for identifier:', identifier, 'profileId:', profileId);
 
                 // Remove from analyzing set since this profile is now complete
@@ -767,13 +824,45 @@ export function LeadTable({
                     )
                   );
 
+                  pendingEmailUpdatesRef.current.push({
+                    profileId: matchedLead.searchProfileId || matchedLead.id,
+                    emailAddress: emails
+                  });
+                  console.log('[BatchUpdate] Added success update for:', matchedLead.name, 'profileId:', matchedLead.searchProfileId || matchedLead.id);
+
                   // Removed individual success toast - only show final completion count
                 } else if (data.status === 'failed') {
                   console.log('Batch email: Failed status for profileId:', profileId, 'error:', data.error);
-                  // Removed individual error toast - only show final completion count
+
+                  // Update with "No emails found" for failed cases
+                  setAllLeads(prevLeads =>
+                    prevLeads.map(l =>
+                      l.id === profileId ? { ...l, emailAddress: 'No emails found' } : l
+                    )
+                  );
+
+                  pendingEmailUpdatesRef.current.push({
+                    profileId: matchedLead.searchProfileId || matchedLead.id,
+                    emailAddress: 'No emails found'
+                  });
+                  console.log('[BatchUpdate] Added failed update for:', matchedLead.name, 'profileId:', matchedLead.searchProfileId || matchedLead.id);
+                } else if (data.status === 'no_contacts' || data.noEmailsFound || (data.emails && data.emails.length === 0)) {
+                  console.log('Batch email: No emails found for profileId:', profileId, 'data.status:', data.status);
+
+                  // Update with "No emails found" for no contacts cases
+                  setAllLeads(prevLeads =>
+                    prevLeads.map(l =>
+                      l.id === profileId ? { ...l, emailAddress: 'No emails found' } : l
+                    )
+                  );
+
+                  pendingEmailUpdatesRef.current.push({
+                    profileId: matchedLead.searchProfileId || matchedLead.id,
+                    emailAddress: 'No emails found'
+                  });
+                  console.log('[BatchUpdate] Added no_contacts update for:', matchedLead.name, 'profileId:', matchedLead.searchProfileId || matchedLead.id);
                 } else {
-                  console.log('Batch email: No emails found for profileId:', profileId, 'data.emails:', data.emails, 'data.status:', data.status);
-                  // Removed individual warning toast - only show final completion count
+                  console.log('Batch email: Unknown status for profileId:', profileId, 'data.emails:', data.emails, 'data.status:', data.status);
                 }
               } else {
                 console.log('Batch email: No matching lead found for identifier:', identifier);
@@ -784,10 +873,23 @@ export function LeadTable({
             case 'complete':
               setStreamingProgress(prev => ({
                 ...prev,
-                completed: prev?.total || totalProfiles,
+                completed: data.totalProcessed || prev?.total || 0,
                 message: 'Email extraction complete!'
               }));
               toast.success(`Email extraction completed! Processed ${data.totalProcessed} profiles.`);
+
+              console.log('[BatchUpdate] Complete case reached. pendingEmailUpdates length:', pendingEmailUpdatesRef.current.length);
+              console.log('[BatchUpdate] pendingEmailUpdates content:', pendingEmailUpdatesRef.current);              // Send batch update to backend
+              if (pendingEmailUpdatesRef.current.length > 0) {
+                try {
+                  await authService.batchUpdateSearchProfiles(pendingEmailUpdatesRef.current);
+                  console.log('[BatchUpdate] Successfully updated', pendingEmailUpdatesRef.current.length, 'profiles');
+                } catch (error) {
+                  console.error('[BatchUpdate] Failed:', error);
+                  toast.error('Failed to save email updates to backend');
+                }
+                pendingEmailUpdatesRef.current = []; // Clear after sending
+              }
 
               // Auto-close progress after a delay
               setTimeout(() => {
@@ -873,7 +975,7 @@ export function LeadTable({
       const cleanup = await authService.getEmailsStream(
         payload,
         // onStreamData callback
-        (data) => {
+        async (data) => {
           console.log('Single email stream data received:', data);
 
           switch (data.type) {
@@ -893,13 +995,51 @@ export function LeadTable({
                   )
                 );
 
+                // Persist to backend search-results profile as well
+                try {
+                  await updateProfileData(lead, { emailAddress: emails });
+                  console.log('[EmailsStream][Single] Persisted email to backend for', lead.name);
+                } catch (persistErr) {
+                  console.error('[EmailsStream][Single] Failed persisting email to backend', persistErr);
+                }
+
                 // Removed individual success toast - emails will be visible in table
               } else if (data.status === 'failed') {
                 console.log(`Failed to get emails for ${lead.name}: ${data.error}`);
-                // Removed individual error toast
+
+                // Update with "No emails found" for failed cases
+                setAllLeads(prevLeads =>
+                  prevLeads.map(l =>
+                    l.id === lead.id ? { ...l, emailAddress: 'No emails found' } : l
+                  )
+                );
+
+                // Persist to backend search-results profile as well
+                try {
+                  await updateProfileData(lead, { emailAddress: 'No emails found' });
+                  console.log('[EmailsStream][Single] Persisted "No emails found" to backend for', lead.name);
+                } catch (persistErr) {
+                  console.error('[EmailsStream][Single] Failed persisting "No emails found" to backend', persistErr);
+                }
+              } else if (data.status === 'no_contacts' || data.noEmailsFound || (data.emails && data.emails.length === 0)) {
+                console.log(`No emails found for ${lead.name}: status=${data.status}, noEmailsFound=${data.noEmailsFound}`);
+
+                // Update with "No emails found" for no contacts cases
+                setAllLeads(prevLeads =>
+                  prevLeads.map(l =>
+                    l.id === lead.id ? { ...l, emailAddress: 'No emails found' } : l
+                  )
+                );
+
+                // Persist to backend search-results profile as well
+                try {
+                  await updateProfileData(lead, { emailAddress: 'No emails found' });
+                  console.log('[EmailsStream][Single] Persisted "No emails found" to backend for', lead.name);
+                } catch (persistErr) {
+                  console.error('[EmailsStream][Single] Failed persisting "No emails found" to backend', persistErr);
+                }
               } else {
-                console.log(`No emails found for ${lead.name}`);
-                // Removed individual warning toast
+                console.log(`Unknown email status for ${lead.name}: ${data.status}`);
               }
               break;
 
@@ -947,6 +1087,40 @@ export function LeadTable({
     }
   };
 
+  // Function to update profile data via PATCH API
+  const updateProfileData = async (lead: Lead, updates: any) => {
+    try {
+      const token = await authService.getToken();
+
+      // Use searchProfileId if available, otherwise fall back to lead.id
+      const profileIdentifier = lead.searchProfileId || lead.id;
+
+      const endpoint = `${API_BASE_URL}/search-results/profiles/${profileIdentifier}`;
+      console.log('[UpdateProfile] PATCH', { endpoint, updates });
+
+      const response = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(updates)
+      });
+
+      if (!response.ok) {
+        console.error('[UpdateProfile] Non-OK response', { status: response.status, statusText: response.statusText });
+        throw new Error(`API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('[UpdateProfile] success', data);
+      return data;
+    } catch (error: any) {
+      console.error('Error updating profile:', error);
+      throw error;
+    }
+  };
+
   // Function to handle Get LinkedIn URL button click
   const handleGetLinkedInUrlClick = async (lead: Lead) => {
     setLoadingLinkedInUrls(prev => [...prev, lead.id]);
@@ -989,6 +1163,17 @@ export function LeadTable({
                 l.id === lead.id ? { ...l, linkedinUrl: profileResult.linkedinUrl } : l
               )
             );
+
+            // Update the profile data in the backend
+            try {
+              await updateProfileData(lead, {
+                linkedinUrl: profileResult.linkedinUrl
+              });
+            } catch (updateError: any) {
+              console.error('Failed to update profile in backend:', updateError);
+              // Don't show error to user as the main operation was successful
+            }
+
             toast.success(`LinkedIn URL found for ${lead.name}: ${profileResult.linkedinUrl}`);
           } else if (profileResult.status === 'no_linkedin_url_found') {
             // Update the lead with no_url_found status
@@ -1057,6 +1242,13 @@ export function LeadTable({
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
   const [isCreatingNewProject, setIsCreatingNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
+
+  // Add to Campaign modal state
+  const [isAddToCampaignModalOpen, setIsAddToCampaignModalOpen] = useState(false);
+  const [availableCampaigns, setAvailableCampaigns] = useState<{ _id: string; name: string; status: string }[]>([]);
+  const [selectedCampaignId, setSelectedCampaignId] = useState<string>('');
+  const [loadingCampaigns, setLoadingCampaigns] = useState(false);
+  const [addingToCampaign, setAddingToCampaign] = useState(false);
 
   useEffect(() => {
     // Only add the event listener if we have data to preserve
@@ -1138,6 +1330,30 @@ export function LeadTable({
         });
     }
   }, [isSaveToProjectModalOpen]);
+
+  // Fetch available campaigns when modal opens
+  useEffect(() => {
+    if (isAddToCampaignModalOpen) {
+      const fetchCampaigns = async () => {
+        setLoadingCampaigns(true);
+        try {
+          const campaigns = await authService.getCampaigns();
+          if (Array.isArray(campaigns)) {
+            setAvailableCampaigns(campaigns);
+          } else {
+            toast.error("Failed to load campaigns");
+          }
+        } catch (error: any) {
+          console.error('Error fetching campaigns:', error);
+          toast.error("Failed to load campaigns");
+        } finally {
+          setLoadingCampaigns(false);
+        }
+      };
+
+      fetchCampaigns();
+    }
+  }, [isAddToCampaignModalOpen]);
 
   // Convert LinkedIn profiles to Lead format
   useEffect(() => {
@@ -1221,6 +1437,8 @@ export function LeadTable({
           matchedCategoriesValue: profile.matchedCategoriesValue,
           source: profile.source === "csv_import" ? "CSV" : "WEB", // Set source for LinkedIn profiles
           contactOutData: profile.contactOutData || null,
+          signalHireData: profile.signalHireData || null,
+          searchProfileId: profile.searchProfileId || null
         };
       });
 
@@ -1727,6 +1945,7 @@ export function LeadTable({
     try {
       const payload = leadsArray.map(lead => {
         const deepAnalysisResult = deepAnalysisResultsMap[lead.id];
+        const uid = lead.signalHireData?.uid || null;
 
         return {
           projectId,
@@ -1737,6 +1956,8 @@ export function LeadTable({
           linkedinUrl: lead.linkedinUrl,
           email: lead.emailAddress,
           relevanceScore: lead.relevanceScore?.toString() || '',
+          uid: uid, // Add uid for SignalHire profiles
+          signalHireData: lead.signalHireData || null, // Include full signalHireData
           matchedCategories: lead.matchedCriteria ? {
             location: lead.matchedCriteria.location ? [lead.location] : [],
             title: lead.matchedCriteria.title ? [lead.title] : [],
@@ -1855,6 +2076,8 @@ export function LeadTable({
         }
       });
 
+      const totalProfiles = linkedinUrls.length + profileIds.length + enrichedProfiles.length;
+
       const payload: {
         criteria: string[];
         linkedinUrls?: string[];
@@ -1877,7 +2100,7 @@ export function LeadTable({
       const response = await authService.deepAnalyseProfileStream(
         payload,
         // onStreamData callback
-        (data) => {
+        async (data) => {
           console.log('Stream data received:', data);
 
           switch (data.type) {
@@ -2054,6 +2277,34 @@ export function LeadTable({
                     return newEnrichmentData;
                   });
 
+                  // Update the profile data in the backend with analysis results
+                  try {
+                    const backendUpdates: any = {
+                      analysisScore: data.analysis?.score,
+                      analysisDescription: data.analysis?.description,
+                      analysisBreakdown: data.analysis?.breakdown
+                    };
+
+                    // Include enriched data if available
+                    if (fullName) backendUpdates.fullName = fullName;
+                    if (title) backendUpdates.title = title;
+                    if (company) backendUpdates.company = company;
+                    if (location) backendUpdates.location = location;
+                    // Only update LinkedIn URL for SignalHire profiles
+                    if (data.profileId && linkedinUrl) backendUpdates.linkedinUrl = linkedinUrl;
+
+                    // Include the full enriched data for the modal
+                    if (data.enrichedData) {
+                      backendUpdates.enrichedData = data.enrichedData;
+                    }
+
+                    await updateProfileData(leadToUpdate, backendUpdates);
+                    console.log(`Successfully updated analysis results for ${leadToUpdate.name} in backend`);
+                  } catch (updateError: any) {
+                    console.error(`Failed to update analysis results in backend:`, updateError);
+                    // Don't show error to user as the UI update was successful
+                  }
+
                 } else if (data.status === 'failed') {
                   console.log(`Failed to analyze ${data.name || data.linkedinUrl || data.profileId}: ${data.error}`);
                   // Removed individual error toast - only show final completion count
@@ -2065,7 +2316,7 @@ export function LeadTable({
             case 'complete':
               setStreamingProgress(prev => ({
                 ...prev,
-                completed: prev?.total || totalProfiles,
+                completed: data.totalProcessed || prev?.total || 0,
                 message: 'Analysis complete!'
               }));
               toast.success(`Deep analysis completed! Processed ${data.totalProcessed} profiles.`);
@@ -3062,6 +3313,153 @@ export function LeadTable({
     };
   }, [streamCleanup]);
 
+  // Column reorder functionality for LeadTable
+  type LeadColumnKey = 'srNo' | 'name' | 'title' | 'company' | 'location' | 'relevanceScore' | 'analysisScore' | 'email' | 'linkedin' | 'source' | `custom_${string}`;
+  const leadDefaultColumnOrder: LeadColumnKey[] = ['srNo', 'name', 'title', 'company', 'location', 'relevanceScore', 'analysisScore', 'email', 'linkedin', 'source'];
+
+  const [leadColumnOrder, setLeadColumnOrder] = useState<LeadColumnKey[]>(() => {
+    try {
+      const saved = localStorage.getItem('LeadTableColumnOrder');
+      return saved ? JSON.parse(saved) : leadDefaultColumnOrder;
+    } catch {
+      return leadDefaultColumnOrder;
+    }
+  });
+
+  const draggingLeadColRef = useRef<LeadColumnKey | null>(null);
+
+  // Save column order to localStorage
+  useEffect(() => {
+    localStorage.setItem('LeadTableColumnOrder', JSON.stringify(leadColumnOrder));
+  }, [leadColumnOrder]);
+
+  const handleLeadHeaderDragStart = (e: React.DragEvent, key: LeadColumnKey) => {
+    draggingLeadColRef.current = key;
+    e.dataTransfer.effectAllowed = 'move';
+
+    // Create custom drag ghost element
+    const dragGhost = document.createElement('div');
+    dragGhost.textContent = getLeadHeaderMeta(key).label;
+    dragGhost.style.padding = '8px 12px';
+    dragGhost.style.backgroundColor = isDarkMode ? '#374151' : '#f3f4f6';
+    dragGhost.style.border = '1px solid #d1d5db';
+    dragGhost.style.borderRadius = '6px';
+    dragGhost.style.fontSize = '14px';
+    dragGhost.style.fontWeight = '500';
+    dragGhost.style.color = isDarkMode ? '#f9fafb' : '#374151';
+    dragGhost.style.position = 'absolute';
+    dragGhost.style.top = '-1000px';
+    dragGhost.style.left = '-1000px';
+    dragGhost.style.zIndex = '1000';
+
+    document.body.appendChild(dragGhost);
+    e.dataTransfer.setDragImage(dragGhost, 0, 0);
+
+    // Clean up the ghost element after drag starts
+    setTimeout(() => {
+      if (document.body.contains(dragGhost)) {
+        document.body.removeChild(dragGhost);
+      }
+    }, 0);
+  };
+
+  const handleLeadHeaderDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+  };
+
+  const handleLeadHeaderDrop = (targetKey: LeadColumnKey) => {
+    if (!draggingLeadColRef.current || draggingLeadColRef.current === targetKey) {
+      draggingLeadColRef.current = null;
+      return;
+    }
+
+    const draggedKey = draggingLeadColRef.current;
+    const currentOrder = [...leadColumnOrder];
+
+    const draggedIndex = currentOrder.indexOf(draggedKey);
+    const targetIndex = currentOrder.indexOf(targetKey);
+
+    // Remove dragged item and insert at target position
+    currentOrder.splice(draggedIndex, 1);
+    currentOrder.splice(targetIndex, 0, draggedKey);
+
+    setLeadColumnOrder(currentOrder);
+    draggingLeadColRef.current = null;
+  };
+
+  // Custom column functionality
+  type CustomColumnType = 'text' | 'file';
+  interface CustomColumnDef { key: LeadColumnKey; label: string; type: CustomColumnType }
+
+  const [leadCustomColumns, setLeadCustomColumns] = useState<CustomColumnDef[]>(() => {
+    try {
+      const raw = localStorage.getItem('LeadTableCustomColumns');
+      if (raw) return JSON.parse(raw);
+    } catch { }
+    return [];
+  });
+
+  const [customDataByProfile, setCustomDataByProfile] = useState<Record<string, Record<string, any>>>(() => {
+    try {
+      const raw = localStorage.getItem('LeadTableCustomColumnData');
+      if (raw) return JSON.parse(raw);
+    } catch { }
+    return {};
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('LeadTableCustomColumns', JSON.stringify(leadCustomColumns)); } catch { }
+  }, [leadCustomColumns]);
+
+  useEffect(() => {
+    try { localStorage.setItem('LeadTableCustomColumnData', JSON.stringify(customDataByProfile)); } catch { }
+  }, [customDataByProfile]);
+
+  const [isAddColumnOpen, setIsAddColumnOpen] = useState(false);
+  const [newColumnName, setNewColumnName] = useState('');
+  const [newColumnType, setNewColumnType] = useState<CustomColumnType>('text');
+
+  const handleAddCustomColumn = () => {
+    const trimmed = newColumnName.trim();
+    if (!trimmed) return;
+    const key = (`custom_${Date.now()}`) as LeadColumnKey;
+    const def: CustomColumnDef = { key, label: trimmed, type: newColumnType };
+    setLeadCustomColumns(prev => [...prev, def]);
+    const nextOrder: LeadColumnKey[] = [...leadColumnOrder, key];
+    setLeadColumnOrder(nextOrder);
+    try { localStorage.setItem('LeadTableColumnOrder', JSON.stringify(nextOrder)); } catch { }
+    setIsAddColumnOpen(false);
+    setNewColumnName('');
+    setNewColumnType('text');
+  };
+
+  const getLeadHeaderMeta = (key: LeadColumnKey) => {
+    const meta = {
+      srNo: { label: 'Sr. No.', minWidth: 'w-5', sortable: null },
+      name: { label: 'Name', minWidth: 'min-w-[150px]', sortable: 'name' as SortField },
+      title: { label: 'Title', minWidth: 'min-w-[180px]', sortable: 'title' as SortField },
+      company: { label: 'Company', minWidth: 'min-w-[150px]', sortable: 'company' as SortField },
+      location: { label: 'Location', minWidth: 'min-w-[120px]', sortable: 'location' as SortField },
+      relevanceScore: { label: 'Score', minWidth: 'w-20', sortable: 'relevanceScore' as SortField },
+      analysisScore: { label: 'Deep Analysis', minWidth: 'min-w-[160px]', sortable: 'analysisScore' as SortField },
+      email: { label: 'Email Address', minWidth: 'min-w-[200px]', sortable: null },
+      linkedin: { label: 'LinkedIn URL', minWidth: 'min-w-[250px]', sortable: null },
+      source: { label: 'Source', minWidth: 'min-w-[100px]', sortable: null }
+    };
+
+    // Check if it's a custom column
+    if (String(key).startsWith('custom_')) {
+      const customCol = leadCustomColumns.find(c => c.key === key);
+      return {
+        label: customCol?.label || key,
+        minWidth: 'min-w-[150px]',
+        sortable: null
+      };
+    }
+
+    return meta[key] || { label: key, minWidth: 'min-w-[100px]', sortable: null };
+  };
+
   // Function to toggle email expansion
   const toggleEmailExpansion = (leadId: string) => {
     setExpandedEmails(prev => {
@@ -3073,6 +3471,293 @@ export function LeadTable({
       }
       return newSet;
     });
+  };
+
+  // Function to render dynamic cells based on column order
+  const renderLeadDynamicCell = (key: LeadColumnKey, lead: Lead, index: number) => {
+    const cellKey = `${lead.id}-${key}`;
+
+    // Handle custom columns
+    if (String(key).startsWith('custom_')) {
+      const def = leadCustomColumns.find(c => c.key === key);
+      if (!def) return null;
+      const value = customDataByProfile[lead.id]?.[key] ?? null;
+
+      if (def.type === 'text') {
+        return (
+          <TableCell key={cellKey} className={`py-2 border-r ${isDarkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+            <Input
+              value={value || ''}
+              placeholder={def.label}
+              className={`${isDarkMode ? 'bg-gray-800 border-gray-600 text-white' : ''}`}
+              onChange={(e) => {
+                setCustomDataByProfile(prev => {
+                  const copy = { ...prev };
+                  const byKey = { ...(copy[lead.id] || {}) };
+                  byKey[key] = e.target.value;
+                  copy[lead.id] = byKey;
+                  return copy;
+                });
+              }}
+            />
+          </TableCell>
+        );
+      } else {
+        // file: show a styled "Add File" button that opens file picker, plus a View link if set
+        return (
+          <TableCell key={cellKey} className={`py-2 border-r ${isDarkMode ? 'border-gray-700' : 'border-gray-300'}`}>
+            <div className="flex items-center gap-2">
+              <input
+                id={`${lead.id}-${key}-file`}
+                type="file"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  const reader = new FileReader();
+                  reader.onload = () => {
+                    const dataUrl = String(reader.result || '');
+                    setCustomDataByProfile(prev => {
+                      const copy = { ...prev };
+                      const byKey = { ...(copy[lead.id] || {}) };
+                      byKey[key] = { name: file.name, dataUrl };
+                      copy[lead.id] = byKey;
+                      return copy;
+                    });
+                  };
+                  reader.readAsDataURL(file);
+                }}
+              />
+              {value?.dataUrl ? (
+                <a
+                  href={value.dataUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`text-xs px-2 py-1 rounded ${isDarkMode ? 'bg-blue-600 text-white hover:bg-blue-700' : 'bg-blue-100 text-blue-700 hover:bg-blue-200'}`}
+                >
+                  View
+                </a>
+              ) : null}
+              <label
+                htmlFor={`${lead.id}-${key}-file`}
+                className={`text-xs px-2 py-1 rounded cursor-pointer ${isDarkMode ? 'bg-gray-600 text-white hover:bg-gray-500' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+              >
+                {value?.dataUrl ? 'Replace' : 'Add File'}
+              </label>
+            </div>
+          </TableCell>
+        );
+      }
+    }
+
+    switch (key) {
+      case 'srNo':
+        return (
+          <TableCell key={cellKey} className={`font-medium py-4 border-r ${isDarkMode ? "text-gray-200 border-gray-700" : "border-gray-300"} w-16`}>
+            {index + 1}
+          </TableCell>
+        );
+
+      case 'name':
+        return (
+          <TableCell
+            key={cellKey}
+            className={`py-1 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[150px] cursor-pointer hover:bg-gray-50 ${isDarkMode ? 'hover:bg-gray-800' : ''}`}
+            onClick={() => editingCell?.leadId !== lead.id || editingCell?.field !== 'name' ? handleCellEdit(lead.id, 'name', lead.name) : undefined}
+          >
+            {renderEditableCell(lead, 'name', lead.name, `${isDarkMode ? "text-gray-400" : "text-gray-600"}`)}
+          </TableCell>
+        );
+
+      case 'title':
+        return (
+          <TableCell
+            key={cellKey}
+            className={`py-1 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[180px] cursor-pointer hover:bg-gray-50 ${isDarkMode ? 'hover:bg-gray-800' : ''}`}
+            onClick={() => editingCell?.leadId !== lead.id || editingCell?.field !== 'title' ? handleCellEdit(lead.id, 'title', lead.title) : undefined}
+          >
+            {renderEditableCell(lead, 'title', lead.title, `${isDarkMode ? "text-gray-400" : "text-gray-600"}`)}
+          </TableCell>
+        );
+
+      case 'company':
+        return (
+          <TableCell
+            key={cellKey}
+            className={`py-1 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[150px] cursor-pointer hover:bg-gray-50 ${isDarkMode ? 'hover:bg-gray-800' : ''}`}
+            onClick={() => editingCell?.leadId !== lead.id || editingCell?.field !== 'company' ? handleCellEdit(lead.id, 'company', lead.company) : undefined}
+          >
+            {renderEditableCell(lead, 'company', lead.company, `${isDarkMode ? "text-gray-400" : "text-gray-600"}`)}
+          </TableCell>
+        );
+
+      case 'location':
+        return (
+          <TableCell
+            key={cellKey}
+            className={`py-1 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[120px] cursor-pointer hover:bg-gray-50 ${isDarkMode ? 'hover:bg-gray-800' : ''}`}
+            onClick={() => editingCell?.leadId !== lead.id || editingCell?.field !== 'location' ? handleCellEdit(lead.id, 'location', lead.location) : undefined}
+          >
+            {renderEditableCell(lead, 'location', lead.location, `${isDarkMode ? "text-gray-400" : "text-gray-600"}`)}
+          </TableCell>
+        );
+
+      case 'relevanceScore':
+        return (
+          <TableCell key={cellKey} className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} w-20`}>
+            <div
+              className="flex flex-col items-center cursor-pointer"
+              onClick={() => handleOpenAnalysisModal(lead)}
+            >
+              <div className={`flex items-center justify-center w-10 h-10 rounded-full ${isDarkMode ? "bg-green-900 text-green-300" : "bg-green-100 text-green-700"} mx-auto`}>
+                <span className="font-medium text-sm">
+                  {lead.relevanceScore !== undefined ? lead.relevanceScore : 0}
+                </span>
+              </div>
+            </div>
+          </TableCell>
+        );
+
+      case 'analysisScore':
+        return (
+          <TableCell key={cellKey} className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[120px]`}>
+            <div className="flex flex-col items-center justify-center gap-1">
+              {analyzingProfiles.has(lead.id) ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                </div>
+              ) : lead.analysisScore ? (
+                <div
+                  className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-700 mx-auto cursor-pointer hover:bg-blue-200 transition-colors"
+                  onClick={() => {
+                    setDeepAnalysisSelectedLeadId(lead.id);
+                    setDeepAnalysisSelectedLead(lead);
+                    setIsDeepAnalysisModalOpen(true);
+                  }}
+                >
+                  <span className="font-medium text-sm">
+                    {lead.analysisScore || 'N/A'}
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-6 h-6 border-2 border-gray-500 rounded-full bg-transparent flex items-center justify-center cursor-pointer transition-all duration-200 ease hover:bg-gray-500 hover:scale-110 group"
+                    onClick={() => handleAnalyzeClick(lead)}
+                    title="Our AI is going to analyze this profile"
+                  >
+                    <svg width="5" height="7" viewBox="0 0 5 7" className="group-hover:fill-white">
+                      <polygon points="0,0 0,7 5,3.5" fill="rgb(107 114 128)" stroke="rgb(107 114 128)" strokeWidth="1" />
+                    </svg>
+                  </div>
+                  <span
+                    className="text-xs text-gray-500 cursor-pointer hover:text-gray-700"
+                    onClick={() => handleAnalyzeClick(lead)}
+                  >
+                    press to run
+                  </span>
+                </div>
+              )}
+            </div>
+          </TableCell>
+        );
+
+      case 'email':
+        return (
+          <TableCell key={cellKey} className={`py-2 ${isDarkMode ? "text-gray-300" : ""} border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[200px]`}>
+            <div className="flex items-center justify-center gap-2">
+              {loadingEmails.includes(lead.id) ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                </div>
+              ) : lead.emailAddress ? (
+                renderEmailDisplay(lead)
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-6 h-6 border-2 border-gray-500 rounded-full bg-transparent flex items-center justify-center cursor-pointer transition-all duration-200 ease hover:bg-gray-500 hover:scale-110 group"
+                    onClick={() => handleGetEmailClick(lead)}
+                  >
+                    <svg width="5" height="7" viewBox="0 0 5 7" className="group-hover:fill-white">
+                      <polygon points="0,0 0,7 5,3.5" fill="rgb(107 114 128)" stroke="rgb(107 114 128)" strokeWidth="1" />
+                    </svg>
+                  </div>
+                  <span
+                    className="text-xs text-gray-500 cursor-pointer hover:text-gray-700"
+                    onClick={() => handleGetEmailClick(lead)}
+                  >
+                    press to run
+                  </span>
+                </div>
+              )}
+            </div>
+          </TableCell>
+        );
+
+      case 'linkedin':
+        return (
+          <TableCell key={cellKey} className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[250px]`}>
+            <div className="flex items-center justify-center gap-2">
+              {loadingLinkedInUrls.includes(lead.id) ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                </div>
+              ) : lead.linkedinUrl && lead.linkedinUrl.trim() !== '' ? (
+                <a
+                  href={lead.linkedinUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`hover:underline flex items-center gap-1 ${isDarkMode ? "text-blue-400" : "text-blue-600"} text-sm truncate max-w-[200px]`}
+                >
+                  {lead.linkedinUrl}
+                  <ExternalLink className="h-3 w-3 flex-shrink-0" />
+                </a>
+              ) : lead.linkedinUrlStatus === 'no_url_found' ? (
+                <span className="text-xs text-orange-600 text-center">
+                  No URL found
+                </span>
+              ) : lead.linkedinUrlStatus === 'failed' ? (
+                <span className="text-xs text-red-600 text-center">
+                  Failed to fetch
+                </span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <div
+                    className="w-6 h-6 border-2 border-gray-500 rounded-full bg-transparent flex items-center justify-center cursor-pointer transition-all duration-200 ease hover:bg-gray-500 hover:scale-110 group"
+                    onClick={() => handleGetLinkedInUrlClick(lead)}
+                  >
+                    <svg width="5" height="7" viewBox="0 0 5 7" className="group-hover:fill-white">
+                      <polygon points="0,0 0,7 5,3.5" fill="rgb(107 114 128)" stroke="rgb(107 114 128)" strokeWidth="1" />
+                    </svg>
+                  </div>
+                  <span
+                    className="text-xs text-gray-500 cursor-pointer hover:text-gray-700"
+                    onClick={() => handleGetLinkedInUrlClick(lead)}
+                  >
+                    press to run
+                  </span>
+                </div>
+              )}
+            </div>
+          </TableCell>
+        );
+
+      case 'source':
+        return (
+          <TableCell key={cellKey} className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[100px] text-center`}>
+            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${lead.source === 'CSV'
+              ? 'bg-green-100 text-green-800'
+              : 'bg-blue-100 text-blue-800'
+              }`}>
+              {lead.source === 'CSV' ? 'CSV' : 'WEB'}
+            </span>
+          </TableCell>
+        );
+
+
+      default:
+        return null;
+    }
   };
 
   // Component to render emails with "See more..." functionality
@@ -3120,6 +3805,200 @@ export function LeadTable({
     }
   };
 
+  // Function to handle delete selected profiles
+  const handleDeleteSelected = async () => {
+    if (selectedLeads.length === 0) {
+      toast.error("Please select at least one profile to delete.");
+      return;
+    }
+
+    // Show confirmation dialog
+    const confirmDelete = window.confirm(`Are you sure you want to delete ${selectedLeads.length} profile${selectedLeads.length > 1 ? 's' : ''}? This action cannot be undone.`);
+    if (!confirmDelete) {
+      return;
+    }
+
+    try {
+      // Get the profile IDs to delete
+      const profilesToDelete = selectedLeads.map(leadId => {
+        const lead = allLeads.find(l => l.id === leadId);
+        return lead?.searchProfileId || leadId;
+      });
+
+      // Optimistically remove from UI
+      const deletedProfiles = allLeads.filter(lead => selectedLeads.includes(lead.id));
+      setAllLeads(prevLeads => prevLeads.filter(lead => !selectedLeads.includes(lead.id)));
+      setSelectedLeads([]);
+      setSelectAll(false);
+
+      // Call API to delete profiles
+      const response = await authService.deleteSearchProfiles(profilesToDelete);
+
+      if (response && response.success) {
+        toast.success(`Successfully deleted ${selectedLeads.length} profile${selectedLeads.length > 1 ? 's' : ''}`);
+      } else {
+        // Rollback on failure
+        setAllLeads(prevLeads => [...prevLeads, ...deletedProfiles]);
+        toast.error(`Failed to delete profiles: ${response?.message || 'Unknown error'}`);
+      }
+    } catch (error: any) {
+      console.error('Error deleting profiles:', error);
+      // Rollback on error
+      const deletedProfiles = allLeads.filter(lead => selectedLeads.includes(lead.id));
+      setAllLeads(prevLeads => [...prevLeads, ...deletedProfiles]);
+      toast.error(`Failed to delete profiles: ${error.message || 'Network error'}`);
+    }
+  };
+
+  // Function to handle export selected profiles
+  const handleExportSelected = () => {
+    if (selectedLeads.length === 0) {
+      toast.error("Please select at least one profile to export");
+      return;
+    }
+
+    // Export selected profiles as CSV
+    const leadsToExport = allLeads.filter(lead => selectedLeads.includes(lead.id));
+
+    if (leadsToExport.length === 0) {
+      toast.error("No profiles to export");
+      return;
+    }
+
+    // Prepare CSV headers
+    const headers = [
+      "Name",
+      "Title",
+      "Company",
+      "Location",
+      "Email Address",
+      "LinkedIn URL"
+    ];
+
+    // Helper function to escape CSV values
+    const escapeCSV = (value: any) => {
+      if (value === null || value === undefined) return "";
+      const stringValue = String(value);
+      if (stringValue.includes(",") || stringValue.includes("\"") || stringValue.includes("\n")) {
+        return `"${stringValue.replace(/"/g, '""')}"`;
+      }
+      return stringValue;
+    };
+
+    // Build CSV rows
+    const rows = leadsToExport.map(lead => {
+      return [
+        escapeCSV(lead.name),
+        escapeCSV(lead.title),
+        escapeCSV(lead.company),
+        escapeCSV(lead.location),
+        escapeCSV(lead.emailAddress),
+        escapeCSV(lead.linkedinUrl)
+      ].join(",");
+    });
+
+    // Combine headers and rows
+    const csvContent = [headers.join(","), ...rows].join("\n");
+
+    // Create a Blob and trigger download
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.setAttribute("download", `exported_profiles_${Date.now()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success(`Exported ${leadsToExport.length} profiles to CSV`);
+  };
+
+  // Function to handle adding selected profiles to campaign
+  const handleAddToCampaign = () => {
+    if (selectedLeads.length === 0) {
+      toast.error("Please select at least one profile to add to campaign.");
+      return;
+    }
+    setSelectedCampaignId('');
+    setIsAddToCampaignModalOpen(true);
+  };
+
+  // Function to execute adding profiles to selected campaign
+  const handleAddToCampaignSubmit = async () => {
+    if (!selectedCampaignId) {
+      toast.error("Please select a campaign.");
+      return;
+    }
+
+    // Check if user wants to create a new campaign
+    if (selectedCampaignId === '__create_new__') {
+      // Get the selected lead objects
+      const selectedLeadObjects = selectedLeads
+        .map(leadId => allLeads.find(l => l.id === leadId))
+        .filter((lead): lead is Lead => lead !== undefined);
+
+      // Transform leads to match the expected format
+      const prospects = selectedLeadObjects.map(lead => ({
+        name: lead.name,
+        email: lead.emailAddress || '',
+        linkedin: lead.linkedinUrl || '',
+        company: lead.company || '',
+        position: lead.title || '',
+        phone: ''
+      }));
+
+      // Store prospects in sessionStorage to access from CampaignsPage
+      sessionStorage.setItem('newCampaignProspects', JSON.stringify(prospects));
+
+      // Show success feedback
+      toast.success(`${prospects.length} prospects will be added to your new campaign!`);
+
+      // Navigate to campaigns page with a flag to create new campaign (NO PAGE RELOAD)
+      navigate('/campaigns?action=create');
+
+      return;
+    }
+
+    setAddingToCampaign(true);
+
+    try {
+      // Get the selected lead objects
+      const selectedLeadObjects = selectedLeads
+        .map(leadId => allLeads.find(l => l.id === leadId))
+        .filter((lead): lead is Lead => lead !== undefined);
+
+      // Transform leads to match the API expected format
+      const prospects = selectedLeadObjects.map(lead => ({
+        name: lead.name,
+        email: lead.emailAddress || '',
+        linkedin: lead.linkedinUrl || '',
+        company: lead.company || '',
+        position: lead.title || '',
+        phone: '' // LeadTable doesn't have phone field
+      }));
+
+      const response = await authService.addProspectsToCampaign(selectedCampaignId, prospects);
+
+      if (response.success) {
+        toast.success(`Successfully added ${response.data.prospectsAdded} prospects to the campaign!`);
+
+        // Clear selection and close modal
+        setSelectedLeads([]);
+        setSelectAll(false);
+        setIsAddToCampaignModalOpen(false);
+        setSelectedCampaignId('');
+      } else {
+        throw new Error(response.message || 'Failed to add prospects to campaign');
+      }
+    } catch (error: any) {
+      console.error('Error adding prospects to campaign:', error);
+      toast.error(`Failed to add prospects to campaign: ${error.message || 'Unknown error'}`);
+    } finally {
+      setAddingToCampaign(false);
+    }
+  };
+
   // Function to handle batch LinkedIn URL extraction using streaming API
   const handleBatchGetLinkedInUrlsClick = async () => {
     if (selectedLeads.length === 0) {
@@ -3164,7 +4043,7 @@ export function LeadTable({
       const cleanup = await authService.getLinkedInUrlsStream(
         payload,
         // onStreamData callback
-        (data) => {
+        async (data) => {
           console.log('LinkedIn URL stream data received:', data);
 
           switch (data.type) {
@@ -3206,18 +4085,27 @@ export function LeadTable({
                     if (status === 'success' && linkedinUrl) {
                       console.log(`SUCCESS: Updated LinkedIn URL for ${lead.name}: ${linkedinUrl}`);
                       toast.success(`LinkedIn URL found for ${lead.name}`);
+
+                      // Update the profile data in the backend
+                      updateProfileData(lead, {
+                        linkedinUrl: linkedinUrl
+                      }).catch(updateError => {
+                        console.error('Failed to update profile in backend:', updateError);
+                        // Don't show error to user as the main operation was successful
+                      });
+
                       // Update the lead with the LinkedIn URL
                       return { ...lead, linkedinUrl: linkedinUrl };
                     } else if (status === 'no_linkedin_url_found') {
                       console.log(`NO URL: No LinkedIn URL found for ${lead.name}`);
                       toast.warning(`No LinkedIn URL found for ${lead.name}`);
                       // Mark as no URL found
-                      return { ...lead, linkedinUrlStatus: 'no_url_found' };
+                      return { ...lead, linkedinUrlStatus: 'no_url_found' as const };
                     } else if (status === 'failed') {
                       console.log(`FAILED: Failed to get LinkedIn URL for ${lead.name}: ${error}`);
                       toast.error(`Failed to get LinkedIn URL for ${lead.name}: ${error || 'Unknown error'}`);
                       // Mark as failed
-                      return { ...lead, linkedinUrlStatus: 'failed' };
+                      return { ...lead, linkedinUrlStatus: 'failed' as const };
                     }
                   }
                   return lead;
@@ -3371,6 +4259,70 @@ export function LeadTable({
       <AnalysisCriteriaModal />
       <AdvancedFiltersModal />
 
+      {/* Add Column Modal */}
+      {isAddColumnOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className={`relative p-6 rounded-lg shadow-lg w-full max-w-md ${isDarkMode ? 'bg-zinc-900' : 'bg-white'}`}>
+            <button
+              aria-label="Close"
+              onClick={() => setIsAddColumnOpen(false)}
+              className={`absolute right-3 top-3 p-1 rounded hover:opacity-80 ${isDarkMode ? 'text-zinc-300 hover:bg-zinc-800' : 'text-gray-600 hover:bg-gray-100'}`}
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-black'}`}>Add Column</h2>
+            <div className="space-y-3 mb-6">
+              <div>
+                <label className={`text-sm mb-1 block ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Column name</label>
+                <Input
+                  value={newColumnName}
+                  onChange={(e) => setNewColumnName(e.target.value)}
+                  className={`${isDarkMode ? 'bg-zinc-800 text-white border-zinc-700' : ''}`}
+                />
+              </div>
+              <div>
+                <label className={`text-sm mb-1 block ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>Type</label>
+                <div className="flex gap-4 text-sm">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="colType"
+                      checked={newColumnType === 'text'}
+                      onChange={() => setNewColumnType('text')}
+                    />
+                    <span>Text (Notes)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="colType"
+                      checked={newColumnType === 'file'}
+                      onChange={() => setNewColumnType('file')}
+                    />
+                    <span>File (e.g. CV)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => setIsAddColumnOpen(false)}
+                className={isDarkMode ? 'border-zinc-600 text-zinc-300' : ''}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddCustomColumn}
+                className={isDarkMode ? 'bg-blue-600 text-white hover:bg-blue-700' : ''}
+              >
+                Add
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <>
         <div className={`sticky top-4 mb-4 flex items-center justify-between py-1 px-2 rounded-lg z-10`}>
           {/* Left side - Filters and Search */}
@@ -3430,188 +4382,100 @@ export function LeadTable({
 
           {/* Right side - Action Buttons */}
           <div className="flex items-center gap-2">
-            {/* Batch Analysis Button - only show when profiles are selected */}
+            {/* Actions Dropdown - only show when profiles are selected */}
             {selectedLeads.length > 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
-                      onClick={handleBatchAnalyzeClick}
-                    >
-                      <BrainCog className="h-3 w-3" />
-                      Deep Analyze ({selectedLeads.length})
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{selectedLeads.length} profile{selectedLeads.length > 1 ? 's' : ''} × 1 credit = {selectedLeads.length} credit{selectedLeads.length > 1 ? 's' : ''}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-
-            {/* Batch Get Emails Button - only show when profiles are selected */}
-            {selectedLeads.length > 0 && (
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''} ${loadingBatchEmails ? 'opacity-50' : ''}`}
-                      onClick={handleBatchGetEmailsClick}
-                      disabled={loadingBatchEmails}
-                    >
-                      {loadingBatchEmails ? (
-                        <>
-                          <div className="animate-spin h-3 w-3 border-2 border-gray-500 border-t-transparent rounded-full"></div>
-                          Finding Emails...
-                        </>
-                      ) : (
-                        <>
-                          <Mail className="h-3 w-3" />
-                          Get Emails ({selectedLeads.length})
-                        </>
-                      )}
-                    </Button>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>{selectedLeads.length} profile{selectedLeads.length > 1 ? 's' : ''} × 3 credits = {selectedLeads.length * 3} credit{selectedLeads.length * 3 > 1 ? 's' : ''}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-
-            {/* Batch Get LinkedIn URLs Button - only show when profiles are selected */}
-            {selectedLeads.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''} ${loadingBatchLinkedInUrls ? 'opacity-50' : ''}`}
-                onClick={handleBatchGetLinkedInUrlsClick}
-                disabled={loadingBatchLinkedInUrls}
-              >
-                {loadingBatchLinkedInUrls ? (
-                  <>
-                    <div className="animate-spin h-3 w-3 border-2 border-gray-500 border-t-transparent rounded-full"></div>
-                    Finding URLs...
-                  </>
-                ) : (
-                  <>
-                    <Linkedin className="h-3 w-3" />
-                    Get LinkedIn URLs ({selectedLeads.length})
-                  </>
-                )}
-              </Button>
-            )}
-
-            {/* Save to Project Button - only show when profiles are selected */}
-            {selectedLeads.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
-                onClick={() => {
-                  if (selectedLeads.length === 0) {
-                    toast.error("Please select at least one profile to save.");
-                    return;
-                  }
-                  const leads = allLeads.filter(l => selectedLeads.includes(l.id));
-                  setLeadToSave(leads as any);
-                  setProjectName('');
-                  setIsSaveToProjectModalOpen(true);
-                }}
-              >
-                <Download className="h-3 w-3" />
-                Save to Project ({selectedLeads.length})
-              </Button>
-            )}
-
-            {/* Export Selected Button - only show when profiles are selected */}
-            {selectedLeads.length > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
-                onClick={() => {
-                  if (selectedLeads.length === 0) {
-                    toast.error("Please select at least one profile to export");
-                    return;
-                  }
-
-                  // Export selected profiles as CSV
-                  const leadsToExport = allLeads.filter(lead => selectedLeads.includes(lead.id));
-
-                  if (leadsToExport.length === 0) {
-                    toast.error("No profiles to export");
-                    return;
-                  }
-
-                  // Prepare CSV headers
-                  const headers = [
-                    "Name",
-                    "Title",
-                    "Company",
-                    "Location",
-                    "Email Address",
-                    "LinkedIn URL"
-                  ];
-
-                  // Helper function to escape CSV values
-                  const escapeCSV = (value: any) => {
-                    if (value === null || value === undefined) return "";
-                    const stringValue = String(value);
-                    if (stringValue.includes(",") || stringValue.includes("\"") || stringValue.includes("\n")) {
-                      return `"${stringValue.replace(/"/g, '""')}"`;
-                    }
-                    return stringValue;
-                  };
-
-                  // Build CSV rows
-                  const rows = leadsToExport.map(lead => {
-                    // Check if lead is enriched and has enriched fields
-                    const isEnriched = enrichedLeads.includes(lead.id);
-                    const enrichedFields = enrichmentData?.enrichedFields?.[lead.id];
-
-                    const name = isEnriched ? (enrichedFields?.name || lead.name) : lead.name;
-                    const title = isEnriched ? (enrichedFields?.title || lead.title) : lead.title;
-                    const company = isEnriched ? (enrichedFields?.company || lead.company) : lead.company;
-                    const location = isEnriched ? (enrichedFields?.location || lead.location) : lead.location;
-                    const email = isEnriched ? (enrichedFields?.emailAddress || lead.emailAddress) : lead.emailAddress;
-                    const linkedinUrl = lead.linkedinUrl;
-
-                    return [
-                      escapeCSV(name),
-                      escapeCSV(title),
-                      escapeCSV(company),
-                      escapeCSV(location),
-                      escapeCSV(email),
-                      escapeCSV(linkedinUrl)
-                    ].join(",");
-                  });
-
-                  // Combine headers and rows
-                  const csvContent = [headers.join(","), ...rows].join("\n");
-
-                  // Create a Blob and trigger download
-                  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-                  const url = URL.createObjectURL(blob);
-                  const link = document.createElement("a");
-                  link.href = url;
-                  link.setAttribute("download", `exported_profiles_${Date.now()}.csv`);
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                  URL.revokeObjectURL(url);
-
-                  toast.success(`Exported ${leadsToExport.length} profiles to CSV`);
-                }}
-              >
-                <Download className="h-3 w-3" />
-                Export Selected ({selectedLeads.length})
-              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={`flex items-center gap-1 text-xs font-medium h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
+                  >
+                    Actions ({selectedLeads.length})
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className={isDarkMode ? 'bg-zinc-900 border-zinc-700' : ''}>
+                  <DropdownMenuItem
+                    onClick={handleBatchAnalyzeClick}
+                    className={`flex items-center gap-2 ${isDarkMode ? 'hover:bg-zinc-800 text-zinc-300' : ''}`}
+                  >
+                    <BrainCog className="h-4 w-4" />
+                    Deep Analyze ({selectedLeads.length})
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleBatchGetEmailsClick}
+                    disabled={loadingBatchEmails}
+                    className={`flex items-center gap-2 ${isDarkMode ? 'hover:bg-zinc-800 text-zinc-300' : ''} ${loadingBatchEmails ? 'opacity-50' : ''}`}
+                  >
+                    {loadingBatchEmails ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                        Finding Emails...
+                      </>
+                    ) : (
+                      <>
+                        <Mail className="h-4 w-4" />
+                        Get Emails ({selectedLeads.length})
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleBatchGetLinkedInUrlsClick}
+                    disabled={loadingBatchLinkedInUrls}
+                    className={`flex items-center gap-2 ${isDarkMode ? 'hover:bg-zinc-800 text-zinc-300' : ''} ${loadingBatchLinkedInUrls ? 'opacity-50' : ''}`}
+                  >
+                    {loadingBatchLinkedInUrls ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
+                        Finding URLs...
+                      </>
+                    ) : (
+                      <>
+                        <Linkedin className="h-4 w-4" />
+                        Get LinkedIn URLs ({selectedLeads.length})
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      if (selectedLeads.length === 0) {
+                        toast.error("Please select at least one profile to save.");
+                        return;
+                      }
+                      const leads = allLeads.filter(l => selectedLeads.includes(l.id));
+                      setLeadToSave(leads as any);
+                      setProjectName('');
+                      setIsSaveToProjectModalOpen(true);
+                    }}
+                    className={`flex items-center gap-2 ${isDarkMode ? 'hover:bg-zinc-800 text-zinc-300' : ''}`}
+                  >
+                    <Download className="h-4 w-4" />
+                    Save to Project ({selectedLeads.length})
+                  </DropdownMenuItem>
+                  {/* <DropdownMenuItem
+                    onClick={handleAddToCampaign}
+                    className={`flex items-center gap-2 ${isDarkMode ? 'hover:bg-zinc-800 text-zinc-300' : ''}`}
+                  >
+                    <Download className="h-4 w-4" />
+                    Add to Campaign ({selectedLeads.length})
+                  </DropdownMenuItem> */}
+                  <DropdownMenuItem
+                    onClick={handleExportSelected}
+                    className={`flex items-center gap-2 ${isDarkMode ? 'hover:bg-zinc-800 text-zinc-300' : ''}`}
+                  >
+                    <Download className="h-4 w-4" />
+                    Export Selected ({selectedLeads.length})
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleDeleteSelected}
+                    className={`flex items-center gap-2 text-red-600 ${isDarkMode ? 'hover:bg-zinc-800' : 'hover:bg-red-50'}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Selected ({selectedLeads.length})
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             )}
 
             {/* Import CSV/XLSX Button */}
@@ -3691,49 +4555,35 @@ export function LeadTable({
                           />
                         </div>
                       </TableHead>
-                      <TableHead className={`py-1 font-medium border-r whitespace-nowrap ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} w-5`}>
-                        Sr. No.
+                      {leadColumnOrder.map((key) => {
+                        const meta = getLeadHeaderMeta(key);
+                        return (
+                          <TableHead
+                            key={key}
+                            draggable
+                            onDragStart={(e) => handleLeadHeaderDragStart(e, key)}
+                            onDragOver={handleLeadHeaderDragOver}
+                            onDrop={() => handleLeadHeaderDrop(key)}
+                            className={`py-1 font-medium border-r ${isDarkMode ? 'border-gray-700 text-gray-200' : 'border-gray-300'} ${meta.minWidth} ${meta.sortable ? 'cursor-pointer' : ''}`}
+                            onClick={() => meta.sortable && handleSort(meta.sortable!)}
+                            title="Drag to reorder"
+                          >
+                            {meta.label} {meta.sortable ? renderSortIcon(meta.sortable!) : null}
+                          </TableHead>
+                        );
+                      })}
+
+                      {/* Add Column Button */}
+                      <TableHead className={`py-1 font-medium border-r ${isDarkMode ? 'border-gray-700 text-gray-200' : 'border-gray-300'} w-24 rounded-tr-md`}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className={`text-xs h-8 px-3 ${isDarkMode ? 'border-gray-600 text-gray-300 hover:bg-gray-700' : ''}`}
+                          onClick={() => setIsAddColumnOpen(true)}
+                        >
+                          Add Column
+                        </Button>
                       </TableHead>
-                      <TableHead
-                        className={`py-1 font-medium cursor-pointer border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[150px]`}
-                        onClick={() => handleSort('name')}
-                      >
-                        Name {renderSortIcon('name')}
-                      </TableHead>
-                      <TableHead
-                        className={`py-1 font-medium cursor-pointer border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[180px]`}
-                        onClick={() => handleSort('title')}
-                      >
-                        Title {renderSortIcon('title')}
-                      </TableHead>
-                      <TableHead
-                        className={`py-1 font-medium cursor-pointer border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[150px]`}
-                        onClick={() => handleSort('company')}
-                      >
-                        Company {renderSortIcon('company')}
-                      </TableHead>
-                      <TableHead
-                        className={`py-1 font-medium cursor-pointer border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[120px]`}
-                        onClick={() => handleSort('location')}
-                      >
-                        Location {renderSortIcon('location')}
-                      </TableHead>
-                      <TableHead
-                        className={`py-1 font-medium cursor-pointer border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} w-20`}
-                        onClick={() => handleSort('relevanceScore')}
-                      >
-                        Score {renderSortIcon('relevanceScore')}
-                      </TableHead>
-                      <TableHead
-                        className={`py-1 font-medium cursor-pointer border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[160px]`}
-                        onClick={() => handleSort('analysisScore')}
-                      >
-                        Deep Analysis {renderSortIcon('analysisScore')}
-                      </TableHead>
-                      <TableHead className={`py-1 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[200px]`}>Email Address</TableHead>
-                      <TableHead className={`py-1 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[250px]`}>LinkedIn URL</TableHead>
-                      <TableHead className={`py-1 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} min-w-[100px]`}>Source</TableHead>
-                      <TableHead className={`py-1 font-medium border-r ${isDarkMode ? "border-gray-700 text-gray-200" : "border-gray-300"} w-24 rounded-tr-md`}>Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -3754,218 +4604,14 @@ export function LeadTable({
                             />
                           </div>
                         </TableCell>
-                        <TableCell className={`font-medium py-4 border-r ${isDarkMode ? "text-gray-200 border-gray-700" : "border-gray-300"} w-16`}>{index + 1}</TableCell>
-                        <TableCell
-                          className={`py-1 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[150px] cursor-pointer hover:bg-gray-50 ${isDarkMode ? 'hover:bg-gray-800' : ''}`}
-                          onClick={() => editingCell?.leadId !== lead.id || editingCell?.field !== 'name' ? handleCellEdit(lead.id, 'name', lead.name) : undefined}
-                        >
-                          {renderEditableCell(lead, 'name', lead.name, `${isDarkMode ? "text-gray-400" : "text-gray-600"}`)}
-                        </TableCell>
-                        <TableCell
-                          className={`py-1 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[180px] cursor-pointer hover:bg-gray-50 ${isDarkMode ? 'hover:bg-gray-800' : ''}`}
-                          onClick={() => editingCell?.leadId !== lead.id || editingCell?.field !== 'title' ? handleCellEdit(lead.id, 'title', lead.title) : undefined}
-                        >
-                          {renderEditableCell(lead, 'title', lead.title, `${isDarkMode ? "text-gray-400" : "text-gray-600"}`)}
-                        </TableCell>
-                        <TableCell
-                          className={`py-1 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[150px] cursor-pointer hover:bg-gray-50 ${isDarkMode ? 'hover:bg-gray-800' : ''}`}
-                          onClick={() => editingCell?.leadId !== lead.id || editingCell?.field !== 'company' ? handleCellEdit(lead.id, 'company', lead.company) : undefined}
-                        >
-                          {renderEditableCell(lead, 'company', lead.company, `${isDarkMode ? "text-gray-400" : "text-gray-600"}`)}
-                        </TableCell>
-                        <TableCell
-                          className={`py-1 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[120px] cursor-pointer hover:bg-gray-50 ${isDarkMode ? 'hover:bg-gray-800' : ''}`}
-                          onClick={() => editingCell?.leadId !== lead.id || editingCell?.field !== 'location' ? handleCellEdit(lead.id, 'location', lead.location) : undefined}
-                        >
-                          {renderEditableCell(lead, 'location', lead.location, `${isDarkMode ? "text-gray-400" : "text-gray-600"}`)}
-                        </TableCell>
-                        <TableCell className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} w-20`}>
-                          <div
-                            className="flex flex-col items-center cursor-pointer"
-                            onClick={() => handleOpenAnalysisModal(lead)}
-                          >
-                            <div className={`flex items-center justify-center w-10 h-10 rounded-full ${isDarkMode ? "bg-green-900 text-green-300" : "bg-green-100 text-green-700"} mx-auto`}>
-                              <span className="font-medium text-sm">
-                                {lead.relevanceScore !== undefined ? lead.relevanceScore : 0}
-                              </span>
-                            </div>
-                          </div>
-                        </TableCell>
-                        <TableCell className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[120px]`}>
-                          <div className="flex flex-col items-center justify-center gap-1">
-                            {/* Check if this profile is currently being analyzed */}
-                            {analyzingProfiles.has(lead.id) ? (
-                              <div className="flex items-center justify-center">
-                                <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
-                              </div>
-                            ) : lead.analysisScore ? (
-                              /* Show completed analysis */
-                              <div
-                                className="flex items-center justify-center w-10 h-10 rounded-full bg-blue-100 text-blue-700 mx-auto cursor-pointer hover:bg-blue-200 transition-colors"
-                                onClick={() => {
-                                  setDeepAnalysisSelectedLeadId(lead.id);
-                                  setDeepAnalysisSelectedLead(lead);
-                                  setIsDeepAnalysisModalOpen(true);
-                                }}
-                              >
-                                <span className="font-medium text-sm">
-                                  {lead.analysisScore || 'N/A'}
-                                </span>
-                              </div>
-                            ) : (
-                              /* Show analyze button for profiles that haven't been analyzed */
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-6 h-6 border-2 border-gray-500 rounded-full bg-transparent flex items-center justify-center cursor-pointer transition-all duration-200 ease hover:bg-gray-500 hover:scale-110 group"
-                                  onClick={() => handleAnalyzeClick(lead)}
-                                  title="Our AI is going to analyze this profile"
-                                >
-                                  <svg width="5" height="7" viewBox="0 0 5 7" className="group-hover:fill-white">
-                                    <polygon points="0,0 0,7 5,3.5" fill="rgb(107 114 128)" stroke="rgb(107 114 128)" strokeWidth="1" />
-                                  </svg>
-                                </div>
-                                <span
-                                  className="text-xs text-gray-500 cursor-pointer hover:text-gray-700"
-                                  onClick={() => handleAnalyzeClick(lead)}
-                                >
-                                  press to run
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className={`py-2 ${isDarkMode ? "text-gray-300" : ""} border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[200px]`}>
-                          <div className="flex items-center justify-center gap-2">
-                            {loadingEmails.includes(lead.id) ? (
-                              <div className="flex items-center justify-center">
-                                <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
-                              </div>
-                            ) : lead.emailAddress ? (
-                              renderEmailDisplay(lead)
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-6 h-6 border-2 border-gray-500 rounded-full bg-transparent flex items-center justify-center cursor-pointer transition-all duration-200 ease hover:bg-gray-500 hover:scale-110 group"
-                                  onClick={() => {
-                                    handleGetEmailClick(lead);
-                                  }}
-                                >
-                                  <svg width="5" height="7" viewBox="0 0 5 7" className="group-hover:fill-white">
-                                    <polygon points="0,0 0,7 5,3.5" fill="rgb(107 114 128)" stroke="rgb(107 114 128)" strokeWidth="1" />
-                                  </svg>
-                                </div>
-                                <span
-                                  className="text-xs text-gray-500 cursor-pointer hover:text-gray-700"
-                                  onClick={() => {
-                                    handleGetEmailClick(lead);
-                                  }}
-                                >
-                                  press to run
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[250px]`}>
-                          <div className="flex items-center justify-center gap-2">
-                            {loadingLinkedInUrls.includes(lead.id) ? (
-                              <div className="flex items-center justify-center">
-                                <div className="animate-spin h-4 w-4 border-2 border-gray-500 border-t-transparent rounded-full"></div>
-                              </div>
-                            ) : lead.linkedinUrl && lead.linkedinUrl.trim() !== '' ? (
-                              <a
-                                href={lead.linkedinUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className={`hover:underline flex items-center gap-1 ${isDarkMode ? "text-blue-400" : "text-blue-600"} text-sm truncate max-w-[200px]`}
-                              >
-                                {lead.linkedinUrl}
-                                <ExternalLink className="h-3 w-3 flex-shrink-0" />
-                              </a>
-                            ) : lead.linkedinUrlStatus === 'no_url_found' ? (
-                              <span className="text-xs text-orange-600 text-center">
-                                No URL found
-                              </span>
-                            ) : lead.linkedinUrlStatus === 'failed' ? (
-                              <span className="text-xs text-red-600 text-center">
-                                Failed to fetch
-                              </span>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <div
-                                  className="w-6 h-6 border-2 border-gray-500 rounded-full bg-transparent flex items-center justify-center cursor-pointer transition-all duration-200 ease hover:bg-gray-500 hover:scale-110 group"
-                                  onClick={() => {
-                                    handleGetLinkedInUrlClick(lead);
-                                  }}
-                                >
-                                  <svg width="5" height="7" viewBox="0 0 5 7" className="group-hover:fill-white">
-                                    <polygon points="0,0 0,7 5,3.5" fill="rgb(107 114 128)" stroke="rgb(107 114 128)" strokeWidth="1" />
-                                  </svg>
-                                </div>
-                                <span
-                                  className="text-xs text-gray-500 cursor-pointer hover:text-gray-700"
-                                  onClick={() => {
-                                    handleGetLinkedInUrlClick(lead);
-                                  }}
-                                >
-                                  press to run
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        <TableCell className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} min-w-[100px] text-center`}>
-                          <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${lead.source === 'CSV'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-blue-100 text-blue-800'
-                            }`}>
-                            {lead.source === 'CSV' ? 'CSV' : 'WEB'}
-                          </span>
-                        </TableCell>
-                        <TableCell className="py-2 text-right w-24">
-                          <div className="flex justify-end gap-1 pr-3">
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={`h-8 w-8 rounded-md ${isDarkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"}`}
-                                    onClick={() => handleCopyUrl(lead.linkedinUrl)}
-                                  >
-                                    {copiedUrl === lead.linkedinUrl ? (
-                                      <CheckCircle className="h-4 w-4 text-green-500" />
-                                    ) : (
-                                      <Copy className="h-4 w-4 text-gray-500" />
-                                    )}
-                                    <span className="sr-only">Copy LinkedIn URL</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Copy LinkedIn URL</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
 
-                            <TooltipProvider>
-                              <Tooltip>
-                                <TooltipTrigger asChild>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className={`h-8 w-8 rounded-md ${isDarkMode ? "hover:bg-gray-700" : "hover:bg-gray-100"}`}
-                                    onClick={() => handleOpenUrl(lead.linkedinUrl)}
-                                  >
-                                    <ExternalLink className="h-4 w-4 text-gray-500" />
-                                    <span className="sr-only">Open LinkedIn profile</span>
-                                  </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                  <p>Open LinkedIn profile</p>
-                                </TooltipContent>
-                              </Tooltip>
-                            </TooltipProvider>
-                          </div>
+                        {leadColumnOrder.map((key) =>
+                          renderLeadDynamicCell(key, lead, index)
+                        )}
+
+                        {/* Empty cell for Add Column */}
+                        <TableCell className={`py-2 border-r ${isDarkMode ? "border-gray-700" : "border-gray-300"} w-24`}>
+                          {/* Empty cell */}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -4127,6 +4773,70 @@ export function LeadTable({
                 disabled={!selectedProjectId.trim()}
               >
                 Save
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add to Campaign Modal */}
+      {isAddToCampaignModalOpen && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className={`p-6 rounded-lg shadow-lg w-full max-w-md ${isDarkMode ? "bg-zinc-900" : "bg-white"}`}>
+            <h2 className={`text-xl font-semibold mb-4 ${isDarkMode ? "text-white" : "text-black"}`}>
+              Add to Campaign
+            </h2>
+            <p className={`mb-4 ${isDarkMode ? "text-zinc-300" : "text-gray-600"}`}>
+              Select a campaign to add {selectedLeads.length} selected lead{selectedLeads.length > 1 ? 's' : ''} to:
+            </p>
+
+            {loadingCampaigns ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+                <span className={`ml-2 ${isDarkMode ? "text-zinc-300" : "text-gray-600"}`}>Loading campaigns...</span>
+              </div>
+            ) : (
+              <select
+                value={selectedCampaignId}
+                onChange={(e) => setSelectedCampaignId(e.target.value)}
+                className={`w-full p-2 border rounded-md mb-4 ${isDarkMode ? "bg-zinc-800 border-zinc-600 text-white" : "bg-white border-gray-300 text-black"}`}
+              >
+                <option value="">Select a campaign...</option>
+                <option value="__create_new__">+ Create New Campaign</option>
+                {availableCampaigns.map((campaign) => (
+                  <option key={campaign._id} value={campaign._id}>
+                    {campaign.name} ({campaign.status})
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsAddToCampaignModalOpen(false);
+                  setSelectedCampaignId('');
+                }}
+                className={isDarkMode ? "border-zinc-600 text-zinc-300" : ""}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAddToCampaignSubmit}
+                className={isDarkMode ? "bg-blue-600 text-white hover:bg-blue-700" : ""}
+                disabled={!selectedCampaignId || addingToCampaign}
+              >
+                {selectedCampaignId === '__create_new__' ? (
+                  'Create Campaign'
+                ) : addingToCampaign ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Adding...
+                  </>
+                ) : (
+                  `Add ${selectedLeads.length} Lead${selectedLeads.length > 1 ? 's' : ''}`
+                )}
               </Button>
             </div>
           </div>

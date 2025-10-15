@@ -48,7 +48,7 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
 
   const getFormattedData = () => {
     const profilesToExport = getProfilesToExport();
-    
+
     if (profilesToExport.length === 0) {
       toast.error("No profiles to export");
       return null;
@@ -56,7 +56,7 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
 
     const headers = [
       "Name",
-      "Title", 
+      "Title",
       "Company",
       "Location",
       "Project",
@@ -98,7 +98,7 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
     const headerRow = headers.map(escapeTSV).join('\t');
 
     // Create data rows with tabs
-    const dataRows = rows.map(row => 
+    const dataRows = rows.map(row =>
       row.map(cell => escapeTSV(String(cell || ''))).join('\t')
     );
 
@@ -106,8 +106,8 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
     const tsvContent = [headerRow, ...dataRows].join('\n');
 
     // Create CSV file with tab separators (TSV format)
-    const blob = new Blob([tsvContent], { 
-      type: "text/csv;charset=utf-8;" 
+    const blob = new Blob([tsvContent], {
+      type: "text/csv;charset=utf-8;"
     });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -129,13 +129,13 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
 
     // Create a new workbook
     const wb = XLSX.utils.book_new();
-    
+
     // Create worksheet data with headers and rows
     const wsData = [headers, ...rows];
-    
+
     // Create worksheet
     const ws = XLSX.utils.aoa_to_sheet(wsData);
-    
+
     // Set column widths for better formatting
     const colWidths = [
       { wch: 20 }, // Name
@@ -155,7 +155,7 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
     for (let col = headerRange.s.c; col <= headerRange.e.c; col++) {
       const cellRef = XLSX.utils.encode_cell({ r: 0, c: col });
       if (!ws[cellRef]) continue;
-      
+
       ws[cellRef].s = {
         font: { bold: true, color: { rgb: "FFFFFF" } },
         fill: { fgColor: { rgb: "366092" } },
@@ -165,10 +165,10 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
 
     // Add the worksheet to workbook
     XLSX.utils.book_append_sheet(wb, ws, "Profiles");
-    
+
     // Save the file
     XLSX.writeFile(wb, `${fileName}_${Date.now()}.xlsx`);
-    
+
     toast.success(`Exported ${count} profiles to Excel`);
   };
 
@@ -176,7 +176,7 @@ export const ExportDropdown: React.FC<ExportDropdownProps> = ({
 
   const handleExport = async (format: 'csv' | 'xlsx') => {
     setIsExporting(true);
-    
+
     try {
       switch (format) {
         case 'csv':
