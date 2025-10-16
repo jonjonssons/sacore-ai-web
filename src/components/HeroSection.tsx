@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Mic, Search, SendHorizontal } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Input } from './ui/input';
 import '@/components/dashboard/RequirementsProfileComponent.css'
@@ -13,6 +13,7 @@ const HeroSection: React.FC = () => {
   const [isListening, setIsListening] = useState(false);
   const [recognition, setRecognition] = useState(null); // Speech recognition stub
   const { isDarkMode } = useTheme();
+  const navigate = useNavigate();
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -118,7 +119,7 @@ const HeroSection: React.FC = () => {
     sessionStorage.setItem('initialSearchQuery', searchQuery);
 
     // redirect to requirements profile
-    window.location.href = '/signup';
+    navigate('/signup');
   };
 
   // const toggleListening = () => {
@@ -173,7 +174,7 @@ const HeroSection: React.FC = () => {
               fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Roboto, sans-serif"
             }}
           >
-            Find people in seconds, your personal sourcing assistant
+            Find people in minutes, your personal sourcing assistant
           </p>
 
           {/* Search Bar */}
