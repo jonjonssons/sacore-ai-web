@@ -2744,9 +2744,9 @@ export default function CandidatesPage() {
                                 <DropdownMenuItem onSelect={() => { handleSaveToProject(); }}>
                                     Save to Project ({selectedLeads.length})
                                 </DropdownMenuItem>
-                                {/* <DropdownMenuItem onSelect={() => { handleAddToCampaign(); }}>
+                                <DropdownMenuItem onSelect={() => { handleAddToCampaign(); }}>
                                     Add to Campaign ({selectedLeads.length})
-                                </DropdownMenuItem> */}
+                                </DropdownMenuItem>
                                 <DropdownMenuItem onSelect={() => { handleExportSelected(); }}>
                                     Export Selected ({selectedLeads.length})
                                 </DropdownMenuItem>

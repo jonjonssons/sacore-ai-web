@@ -4453,13 +4453,13 @@ export function LeadTable({
                     <Download className="h-4 w-4" />
                     Save to Project ({selectedLeads.length})
                   </DropdownMenuItem>
-                  {/* <DropdownMenuItem
+                  <DropdownMenuItem
                     onClick={handleAddToCampaign}
                     className={`flex items-center gap-2 ${isDarkMode ? 'hover:bg-zinc-800 text-zinc-300' : ''}`}
                   >
                     <Download className="h-4 w-4" />
                     Add to Campaign ({selectedLeads.length})
-                  </DropdownMenuItem> */}
+                  </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={handleExportSelected}
                     className={`flex items-center gap-2 ${isDarkMode ? 'hover:bg-zinc-800 text-zinc-300' : ''}`}
