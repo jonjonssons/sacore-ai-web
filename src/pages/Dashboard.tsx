@@ -1509,20 +1509,20 @@ const AppSidebar: React.FC<{ onHandleLogout: () => void; activePage: string; set
                     active={activePage === 'enrich'}
                   />
                 </div>
-                {/* <div onClick={() => handleMenuClick('campaigns', '/campaigns')}>
+                <div onClick={() => handleMenuClick('campaigns', '/campaigns')}>
                   <SidebarMenuItemComponent
                     icon={Send}
                     label="Campaigns"
                     active={activePage === 'campaigns'}
                   />
-                </div> */}
-                {/* <div onClick={() => handleMenuClick('tasks', '/tasks')}>
+                </div>
+                <div onClick={() => handleMenuClick('tasks', '/tasks')}>
                   <SidebarMenuItemComponent
                     icon={CheckSquare}
                     label="Tasks"
                     active={activePage === 'tasks'}
                   />
-                </div> */}
+                </div>
                 <div onClick={() => handleMenuClick('candidates', '/candidates')}>
                   <SidebarMenuItemComponent
                     icon={User}

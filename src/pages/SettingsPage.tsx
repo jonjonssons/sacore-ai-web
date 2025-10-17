@@ -381,7 +381,7 @@ const SettingsPage: React.FC = () => {
                     onValueChange={handleTabChange}
                     className="w-full"
                 >
-                    <TabsList className={`grid grid-cols-4 mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
+                    <TabsList className={`grid grid-cols-5 mb-8 ${isDarkMode ? 'bg-gray-800' : 'bg-gray-100'}`}>
                         <TabsTrigger value="account" className="text-sm">
                             <User className="h-4 w-4 mr-2" />
                             Account
@@ -398,10 +398,10 @@ const SettingsPage: React.FC = () => {
                             <Bell className="h-4 w-4 mr-2" />
                             Notifications
                         </TabsTrigger>
-                        {/* <TabsTrigger value="campaigns" className="text-sm">
+                        <TabsTrigger value="campaigns" className="text-sm">
                             <Settings className="h-4 w-4 mr-2" />
                             Campaign Settings
-                        </TabsTrigger> */}
+                        </TabsTrigger>
                     </TabsList>
 
                     {/* Account Tab Content */}
