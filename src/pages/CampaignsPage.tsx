@@ -392,6 +392,8 @@ const CampaignsPage: React.FC = () => {
     const [connectedAccounts, setConnectedAccounts] = useState([]);
     const [accountsLoading, setAccountsLoading] = useState(false);
     const accountsLoadingRef = useRef(false); // Ref to prevent concurrent account loading
+    const processedOAuthCodes = useRef(new Set<string>()); // Track processed OAuth codes
+    const callbackProcessingRef = useRef(false); // Prevent concurrent callback processing
     const [refreshingGmailTokens, setRefreshingGmailTokens] = useState(false);
 
     // Lead selection state for delete functionality
@@ -1125,8 +1127,23 @@ const CampaignsPage: React.FC = () => {
                 const code = payload.code as string;
                 if (!code) return;
 
+                // Guard: Check if this code has already been processed
+                if (processedOAuthCodes.current.has(code)) {
+                    console.log('⏭️ OAuth code already processed, skipping...');
+                    return;
+                }
+
+                // Guard: Prevent concurrent callback processing
+                if (callbackProcessingRef.current) {
+                    console.log('⏭️ Callback already processing, skipping...');
+                    return;
+                }
+
                 try {
+                    callbackProcessingRef.current = true;
+                    processedOAuthCodes.current.add(code); // Mark as processed
                     setAccountsLoading(true);
+
                     const resp = await authService.completeGmailCallback(code);
                     await loadConnectedAccounts();
                     const acc = (resp as any)?.account;
@@ -1135,15 +1152,19 @@ const CampaignsPage: React.FC = () => {
                     }
                     toast({ title: 'Gmail Connected', description: (resp as any)?.message || acc?.email || 'Account linked successfully.' });
                 } catch (e: any) {
+                    // Remove from processed set on error so it can be retried
+                    processedOAuthCodes.current.delete(code);
                     toast({ title: 'Connection failed', description: e?.message || 'Unable to connect Gmail', variant: 'destructive' });
                 } finally {
                     setAccountsLoading(false);
+                    callbackProcessingRef.current = false;
                 }
             } catch { }
         };
         window.addEventListener('message', onMessage);
         return () => window.removeEventListener('message', onMessage);
-    }, [selectedNodeForEdit]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); // Empty dependency array - listener doesn't need to change
 
     const steps = [
         { id: 1, title: 'Campaign Details', icon: Target },
