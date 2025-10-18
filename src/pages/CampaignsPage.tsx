@@ -391,6 +391,7 @@ const CampaignsPage: React.FC = () => {
 
     const [connectedAccounts, setConnectedAccounts] = useState([]);
     const [accountsLoading, setAccountsLoading] = useState(false);
+    const accountsLoadingRef = useRef(false); // Ref to prevent concurrent account loading
     const [refreshingGmailTokens, setRefreshingGmailTokens] = useState(false);
 
     // Lead selection state for delete functionality
@@ -494,7 +495,7 @@ const CampaignsPage: React.FC = () => {
             const selectedNode = campaignFlow.find(node => node.id === selectedNodeForEdit);
             if (selectedNode && selectedNode.stepType === 'email') {
                 // Only load accounts if not already loaded
-                if (connectedAccounts.length === 0 && !accountsLoading) {
+                if (connectedAccounts.length === 0 && !accountsLoadingRef.current) {
                     loadConnectedAccounts();
                 }
             } else if (selectedNode && (selectedNode.stepType === 'linkedin-invitation' || selectedNode.stepType === 'linkedin-visit' || selectedNode.stepType === 'linkedin-message')) {
@@ -502,7 +503,8 @@ const CampaignsPage: React.FC = () => {
                 loadLinkedInExtensionStatus();
             }
         }
-    }, [selectedNodeForEdit, campaignFlow]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedNodeForEdit]); // Only depend on selectedNodeForEdit, not campaignFlow to prevent unnecessary re-runs
 
     // Cleanup stream when component unmounts
     useEffect(() => {
@@ -1016,7 +1018,14 @@ const CampaignsPage: React.FC = () => {
     };
 
     const loadConnectedAccounts = async () => {
+        // Guard against concurrent calls
+        if (accountsLoadingRef.current) {
+            console.log('⏭️ Accounts already loading, skipping...');
+            return;
+        }
+
         try {
+            accountsLoadingRef.current = true;
             setAccountsLoading(true);
             const accounts = await authService.getAccounts();
             setConnectedAccounts(accounts);
@@ -1025,6 +1034,7 @@ const CampaignsPage: React.FC = () => {
             // Don't show error toast for accounts as it's not critical for viewing campaigns
         } finally {
             setAccountsLoading(false);
+            accountsLoadingRef.current = false;
         }
     };
 
